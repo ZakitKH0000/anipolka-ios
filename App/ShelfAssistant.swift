@@ -10,33 +10,41 @@ import UserNotifications
     private let store: ShelfStore
     private let network: NetworkService
     private var coverTask: Task<Void,Never>?
+    private var coverAttempts: [UUID:Date] = [:]
     init(store: ShelfStore, network: NetworkService) { self.store = store; self.network = network; UNUserNotificationCenter.current().delegate = NotificationBridge.shared }
 
     func queueCovers(force: Bool = false) {
-        guard coverTask == nil, !store.demo, network.canLoadCovers, force || store.snapshot.preferences.automaticCovers else { return }
+        let previewProbe = store.demo && ProcessInfo.processInfo.arguments.contains("--live-covers")
+        guard coverTask == nil, !store.demo || previewProbe, store.loadFailure == nil, network.canLoadCovers, force || store.snapshot.preferences.automaticCovers else { return }
         coverTask = Task {
             findingCovers = true
-            defer { findingCovers = false; coverTask = nil }
+            var continueBatch = false
+            defer { findingCovers = false; coverTask = nil; if continueBatch && !Task.isCancelled { queueCovers() } }
             let ids = store.snapshot.entries.filter { entry in
                 guard entry.coverData == nil, entry.coverLookupDisabled != true else { return false }
-                return !entry.coverURL.isEmpty || force || entry.coverDiscovery?.query != entry.title || (entry.coverDiscovery?.checkedAt ?? .distantPast).timeIntervalSinceNow < -86400
+                if !force, entry.coverDiscovery?.query == entry.title, let attempt = coverAttempts[entry.id], attempt.timeIntervalSinceNow > -60 { return false }
+                return force || entry.coverDiscovery?.query != entry.title || (entry.coverDiscovery?.checkedAt ?? .distantPast).timeIntervalSinceNow < -86400
             }.prefix(30).map(\.id)
+            continueBatch = ids.count == 30
+            guard !ids.isEmpty else { return }
             for id in ids {
                 guard !Task.isCancelled, force || store.snapshot.preferences.automaticCovers, network.canLoadCovers,
                       let entry = store.snapshot.entries.first(where:{$0.id == id}), entry.coverData == nil, entry.coverLookupDisabled != true else { continue }
+                coverAttempts[id] = Date()
                 do {
                     var address = entry.coverURL
                     if address.isEmpty {
                         let query = TitleIdentity.query(entry.title)
-                        let candidates = try await network.search(query)
+                        let candidates = try await network.automaticCoverCandidates(query)
                         try Task.checkCancellation()
                         guard let current = store.snapshot.entries.first(where:{$0.id == id}), current.title == entry.title, current.coverURL.isEmpty, current.coverData == nil, current.coverLookupDisabled != true else { continue }
                         if let index = TitleIdentity.uniqueExactMatch(query:query,candidates:candidates.map { [$0.title,$0.name] }) {
                             let candidate = candidates[index]; address = candidate.posterURL
+                            guard !address.isEmpty else { setDiscovery(id:id,title:entry.title,message:"Произведение найдено, но в каталоге нет обложки. Можно выбрать свою.",needsChoice:false); continue }
                             _ = store.change { state in
                                 guard let i = state.entries.firstIndex(where:{$0.id == id}) else { return }
                                 state.entries[i].coverURL = candidate.posterURL
-                                state.entries[i].sourceID = candidate.id; state.entries[i].sourceURL = candidate.pageURL
+                                state.entries[i].sourceID = candidate.shikimoriID; state.entries[i].sourceURL = candidate.pageURL
                                 state.entries[i].originalTitle = candidate.name
                                 state.entries[i].coverDiscovery = CoverDiscovery(query:entry.title,message:"Обложка найдена автоматически: \(candidate.title)",needsChoice:false)
                             }
@@ -75,7 +83,7 @@ import UserNotifications
             sources.append(ReleaseSubscription(pageURL:page.url,optionID:option.id,label:option.label,episode:option.episode))
             state.entries[i].subscriptions = sources
             if state.entries[i].watchURL.isEmpty { state.entries[i].watchURL = page.watchURL(for:option,episode:option.episode) }
-            if state.entries[i].coverData == nil, state.entries[i].coverURL.isEmpty, let cover = page.coverURL {
+            if state.entries[i].coverData == nil, state.entries[i].coverURL.isEmpty, state.entries[i].coverLookupDisabled != true, let cover = page.coverURL {
                 state.entries[i].coverURL = cover; state.entries[i].coverLookupDisabled = false
             }
         }
@@ -137,7 +145,7 @@ import UserNotifications
     func deliver(_ notice: ReleaseNotice) async {
         let content = UNMutableNotificationContent()
         content.title = "Новая серия · \(notice.title)"
-        content.body = "В источнике доступна серия \(notice.episode). Нажмите, чтобы открыть страницу просмотра."
+        content.body = "AniVibe · \(notice.sourceLabel ?? "Выбранная дорожка"): серия \(notice.episode). Нажмите, чтобы открыть просмотр."
         content.sound = .default; content.userInfo = ["watchURL":notice.url]
         try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier:notice.id,content:content,trigger:nil))
     }

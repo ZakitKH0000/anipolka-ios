@@ -13,16 +13,18 @@ struct SearchView: View {
     @State private var editor: Entry?
     @State private var selected: AnimeCandidate?
     @State private var searched = false
+    @State private var catalog: AnimeCatalog = .shikimori
     var body: some View {
         List {
             Section {
+                Picker("Каталог",selection:$catalog) { ForEach(AnimeCatalog.allCases,id:\.self) { Text($0.rawValue).tag($0) } }.accessibilityIdentifier("catalog-provider")
                 HStack {
                     Image(systemName:"magnifyingglass").foregroundStyle(.secondary)
                     TextField("Название на русском или оригинале",text:$query).submitLabel(.search).onSubmit { search() }.accessibilityIdentifier("catalog-query")
                     if loading { ProgressView() }
                 }
                 Button("Искать в каталоге") { search() }.disabled(query.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || loading).accessibilityIdentifier("catalog-search")
-            } footer: { Text("Поиск Shikimori. Сверьте обложку, год и название: похожие произведения и сезоны показаны отдельно.") }
+            } footer: { Text(catalog == .shikimori ? "Shikimori: поиск на русском или по оригинальному названию. Сверьте год и сезон." : "Kitsu: дополнительный каталог, включая дунхуа. Лучше искать по оригинальному или английскому названию. Сезоны выбираются отдельно.") }
             if !network.canLoadCovers && network.wifiOnly { Section { Label("Обложки загрузятся при подключении к Wi-Fi. Поиск названий доступен через любую сеть.",systemImage:"wifi") } }
             if let message { Section { Text(message).foregroundStyle(.secondary) } }
             if searched && !loading && results.isEmpty && message == nil { Section { Text("Совпадений нет. Попробуйте короткое или оригинальное название либо добавьте запись вручную.") } }
@@ -43,24 +45,26 @@ struct SearchView: View {
                     Button("Добавить вручную",systemImage:"square.and.pencil") { editor = Entry(title:query) }.accessibilityIdentifier("manual-add")
                 } footer: { Text("Вручную можно сохранить привычное название, сквозной номер серии и свою обложку. Каталог не содержит все дунхуа и варианты перевода.") }
             }
-            Section { Link("Открыть Shikimori",destination:URL(string:"https://shikimori.io")!) }.font(.footnote)
+            Section { Link("Открыть \(catalog.rawValue)",destination:URL(string:catalog == .shikimori ? "https://shikimori.io" : "https://kitsu.app")!) }.font(.footnote)
         }
         .navigationTitle(selectingCover ? "Найти обложку" : "Добавить историю").navigationBarTitleDisplayMode(.inline)
         .onAppear { if query.isEmpty { query = initialQuery } }
         .onDisappear { pending?.cancel(); loading = false }
+        .onChange(of:catalog) { _, _ in pending?.cancel(); loading = false; searched = false; results = []; message = nil }
         .sheet(item:$editor) { entry in EntryEditor(entry:entry) { onSaved(selected) } }
     }
     private func choose(_ candidate: AnimeCandidate) {
         if selectingCover { onSaved(candidate); return }
         selected = candidate
-        var e = Entry(title:candidate.title); e.originalTitle = candidate.name; e.sourceID = candidate.id; e.sourceURL = candidate.pageURL; e.coverURL = candidate.posterURL
+        var e = Entry(title:candidate.title); e.originalTitle = candidate.name; e.sourceID = candidate.shikimoriID; e.sourceURL = candidate.pageURL; e.coverURL = candidate.posterURL
         editor = e
     }
     private func search() {
         let term = query.trimmingCharacters(in:.whitespacesAndNewlines); guard !term.isEmpty else { return }
         pending?.cancel(); loading = true; message = nil; results = []; searched = true
+        let provider = catalog
         pending = Task {
-            do { let found = try await network.search(term); try Task.checkCancellation(); results = found }
+            do { let found = try await network.search(term,catalog:provider); try Task.checkCancellation(); results = found }
             catch is CancellationError { return }
             catch { if !Task.isCancelled { message = "Не удалось выполнить поиск. \(error.localizedDescription)" } }
             if !Task.isCancelled { loading = false }

@@ -47,11 +47,12 @@ public struct ReleaseNotice: Codable, Equatable, Identifiable {
     public var previousEpisode: Int
     public var url: String
     public var foundAt: Date
+    public var sourceLabel: String?
     public var read = false
     public init(subscription: ReleaseSubscription, entryTitle: String, episode: Int, url: String, now: Date = Date()) {
         id = "\(subscription.id.uuidString)-\(episode)"; subscriptionID = subscription.id
         title = entryTitle; self.episode = episode; previousEpisode = subscription.lastEpisode ?? episode
-        self.url = url; foundAt = now
+        self.url = url; foundAt = now; sourceLabel = subscription.label
     }
 }
 public struct SourceOption: Equatable, Identifiable {

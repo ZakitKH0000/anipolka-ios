@@ -22,7 +22,9 @@ struct ReleasesView: View {
                     ForEach(notices,id:\.1.id) { entryID, notice in
                         VStack(alignment:.leading,spacing:8) {
                             HStack(alignment:.top) { Text(notice.title).font(.headline); if !notice.read { Circle().fill(.blue).frame(width:8,height:8).accessibilityLabel("Не прочитано") } }
-                            Text(notice.episode - notice.previousEpisode > 1 ? "Новые серии: \(notice.previousEpisode + 1)–\(notice.episode)" : "Новая серия: \(notice.episode)")
+                            Text("Новая серия: \(notice.episode)")
+                            if notice.episode - notice.previousEpisode > 1 { Text("Предыдущая отметка источника: \(notice.previousEpisode)").font(.caption).foregroundStyle(.secondary) }
+                            if let source = notice.sourceLabel { Text("AniVibe · \(source)").font(.caption).foregroundStyle(.secondary) }
                             Text(notice.foundAt,style:.date).font(.caption).foregroundStyle(.secondary)
                             if let url = validWebURL(notice.url) { Link("Открыть просмотр ↗",destination:url).simultaneousGesture(TapGesture().onEnded { markRead(entryID:entryID,id:notice.id) }) }
                             NavigationLink("Карточка произведения") { EntryDetail(id:entryID) }.font(.footnote).accessibilityIdentifier("release-entry")

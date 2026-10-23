@@ -24,12 +24,13 @@ struct EntryDetail: View {
                         HStack { Label(e.status.rawValue,systemImage:"bookmark"); Spacer(); Button { var copy = e; copy.favorite.toggle(); copy.updatedAt = Date(); _ = store.save(copy) } label: { Label(e.favorite ? "В избранном" : "В избранное",systemImage:e.favorite ? "star.fill" : "star") }.frame(minHeight:44) }.font(.subheadline)
                         Button("Источники новых серий",systemImage:"bell.badge") { showSources = true }.buttonStyle(.bordered).controlSize(.large).accessibilityIdentifier("entry-sources")
                         if let discovery = e.coverDiscovery { Text(discovery.message).font(.footnote).foregroundStyle(.secondary); if discovery.needsChoice { Button("Выбрать обложку") { editing = true } } }
+                        if e.coverData != nil, e.coverDiscovery != nil { Label("Обложка сохранена для офлайн-просмотра",systemImage:"checkmark.circle").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("cached-auto-cover") }
                         ForEach(e.subscriptions ?? []) { source in
                             VStack(alignment:.leading,spacing:4) { Text(source.label).font(.subheadline.bold()); if let episode = source.lastEpisode { Text("В источнике доступна серия \(episode)").font(.subheadline).foregroundStyle(.secondary) }; if let error = source.error { Text(error).font(.caption).foregroundStyle(.orange) } }
                         }
                         if !e.note.isEmpty { VStack(alignment:.leading,spacing:8) { Text("Заметка").font(.headline); Text(e.note).textSelection(.enabled) } }
                         if let url = validWebURL(e.watchURL) { Link(destination:url) { Label("Открыть страницу просмотра",systemImage:"play.rectangle").frame(maxWidth:.infinity,minHeight:48) }.buttonStyle(.borderedProminent) }
-                        if let url = validWebURL(e.sourceURL) { Link("Карточка произведения: Shikimori ↗",destination:url).font(.footnote) }
+                        if let url = validWebURL(e.sourceURL) { Link("Карточка произведения: \(url.host?.contains("kitsu") == true ? "Kitsu" : "Shikimori") ↗",destination:url).font(.footnote) }
                         Button("Удалить из коллекции",role:.destructive) { deleteConfirmation = true }.frame(minHeight:44)
                     }.padding(20)
                 }.background(ShelfDesign.background)
@@ -99,7 +100,7 @@ struct EntryEditor: View {
                 ToolbarItem(placement:.confirmationAction) { Button("Сохранить") { save() }.disabled(loadingPhoto).accessibilityIdentifier("save-entry") }
             }
             .sheet(isPresented:$selectSource) { NavigationStack { SearchView(selectingCover:true,initialQuery:entry.title) { candidate in
-                if let c = candidate { entry.originalTitle = c.name; entry.sourceID = c.id; entry.sourceURL = c.pageURL; entry.coverURL = c.posterURL; entry.coverData = nil; entry.coverLookupDisabled = false; entry.coverDiscovery = nil; if entry.title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty { entry.title = c.title } }
+                if let c = candidate { entry.originalTitle = c.name; entry.sourceID = c.shikimoriID; entry.sourceURL = c.pageURL; entry.coverURL = c.posterURL; entry.coverData = nil; entry.coverLookupDisabled = false; entry.coverDiscovery = nil; if entry.title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty { entry.title = c.title } }
                 coverChanged = true; alternatives = []; selectSource = false
             } } }
             .onAppear { hasSeason = entry.season != nil }

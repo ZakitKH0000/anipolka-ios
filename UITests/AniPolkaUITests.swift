@@ -55,4 +55,25 @@ final class AniPolkaUITests: XCTestCase {
         XCTAssertTrue(app.buttons["source-option-kodik-910-1"].waitForExistence(timeout:30))
         capture("public-source-options")
     }
+    func testKitsuDonghuaSearchAndCoverSelection() {
+        start(); app.tabBars.buttons["Поиск"].tap()
+        app.buttons["catalog-provider"].tap(); app.buttons["Kitsu"].tap()
+        let query = app.textFields["catalog-query"]; query.tap(); query.typeText("Tunshi Xingkong")
+        app.buttons["catalog-search"].tap()
+        let result = app.staticTexts["Tunshi Xingkong"].firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout:30)); capture("kitsu-donghua-results"); result.tap()
+        let field = app.textFields["entry-title"].exists ? app.textFields["entry-title"] : app.textViews["entry-title"]
+        XCTAssertTrue(field.waitForExistence(timeout:5)); XCTAssertEqual(field.value as? String,"Tunshi Xingkong")
+        capture("kitsu-selected-cover")
+    }
+    func testAutomaticDonghuaCoverIsCachedAndKeepsProgressAfterRelaunch() {
+        start(extra:["--live-covers"])
+        app.buttons["Открыть Tunshi Xingkong"].tap()
+        let cached = app.descendants(matching:.any).matching(identifier:"cached-auto-cover").firstMatch
+        XCTAssertTrue(cached.waitForExistence(timeout:60)); reveal(cached); capture("automatic-donghua-cover")
+        XCTAssertTrue(app.staticTexts["Серия 24"].exists)
+        app.terminate(); start(reset:false,extra:["--live-covers"])
+        app.buttons["Открыть Tunshi Xingkong"].tap()
+        XCTAssertTrue(cached.waitForExistence(timeout:5)); XCTAssertTrue(app.staticTexts["Серия 24"].exists)
+    }
 }

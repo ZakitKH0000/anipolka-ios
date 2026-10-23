@@ -46,7 +46,8 @@ struct SettingsView: View {
                 Text("Разработчик — Закир Халилов").font(.subheadline)
                 Text("Создано для личного использования.").font(.footnote).foregroundStyle(.secondary)
                 Link("Каталог и изображения: Shikimori",destination:URL(string:"https://shikimori.io")!)
-                Text("Коллекция хранится на iPhone. Без рекламы и аналитики. Для автоматического поиска обложек в каталог отправляется название истории. Проверка серий читает только выбранные вами публичные страницы источников.").font(.footnote).foregroundStyle(.secondary)
+                Link("Дополнительные обложки: Kitsu",destination:URL(string:"https://kitsu.app")!)
+                Text("Коллекция хранится на iPhone. Без рекламы и аналитики. Для поиска обложек название истории отправляется в Shikimori или Kitsu. Проверка серий читает только выбранные вами публичные страницы источников.").font(.footnote).foregroundStyle(.secondary)
             }
         }.navigationTitle("Настройки")
             .sheet(isPresented:$showTextImport) { TextImportView() }

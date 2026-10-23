@@ -4,6 +4,7 @@ import Network
 import UIKit
 import ImageIO
 
+enum AnimeCatalog: String, Codable, CaseIterable { case shikimori = "Shikimori", kitsu = "Kitsu" }
 struct AnimeCandidate: Decodable, Identifiable {
     struct Poster: Decodable { let original: String; let preview: String }
     let id: Int
@@ -14,6 +15,8 @@ struct AnimeCandidate: Decodable, Identifiable {
     let kind: String?
     let episodes: Int?
     let aired_on: String?
+    var catalog: AnimeCatalog? = nil
+    var shikimoriID: Int? { catalog == .kitsu ? nil : id }
     var title: String { russian.flatMap { $0.isEmpty ? nil : $0 } ?? name }
     var posterURL: String { absolute(image.original) }
     var previewURL: String { absolute(image.preview) }
@@ -56,17 +59,45 @@ struct AnimeCandidate: Decodable, Identifiable {
         if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
         try Task.checkCancellation()
         var request = URLRequest(url: url); request.timeoutInterval = 20
-        request.setValue("AniPolka/1.0 (personal iOS collection)", forHTTPHeaderField: "User-Agent")
+        request.setValue("AniPolka/1.1 (personal iOS collection)", forHTTPHeaderField: "User-Agent")
+        if url.host == "kitsu.io" { request.setValue("application/vnd.api+json",forHTTPHeaderField:"Accept") }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         if http.statusCode == 429 { cooldown = Date().addingTimeInterval(Double(http.value(forHTTPHeaderField: "Retry-After") ?? "60") ?? 60); throw ShelfError.invalid("Слишком много запросов. Повторите через минуту.") }
         guard http.statusCode == 200 else { throw ShelfError.invalid("Каталог недоступен (\(http.statusCode)). Можно добавить запись вручную.") }
         return data
     }
-    func search(_ text: String) async throws -> [AnimeCandidate] {
+    func search(_ text: String, catalog: AnimeCatalog = .shikimori) async throws -> [AnimeCandidate] {
+        if catalog == .kitsu { return try await searchKitsu(text) }
         var components = URLComponents(string: "https://shikimori.io/api/animes")!
         components.queryItems = [URLQueryItem(name: "search", value: text), .init(name:"limit",value:"30"), .init(name:"censored",value:"true")]
         return try JSONDecoder().decode([AnimeCandidate].self, from: await metadata(components.url!))
+    }
+    private func searchKitsu(_ text: String) async throws -> [AnimeCandidate] {
+        struct Response: Decodable {
+            struct Item: Decodable {
+                struct Attributes: Decodable {
+                    struct Poster: Decodable { let large: String?; let original: String?; let small: String? }
+                    let canonicalTitle: String; let titles: [String:String]; let slug: String
+                    let posterImage: Poster?; let subtype: String?; let episodeCount: Int?; let startDate: String?
+                }
+                let id: String; let attributes: Attributes
+            }
+            let data: [Item]
+        }
+        var components = URLComponents(string:"https://kitsu.io/api/edge/anime")!
+        components.queryItems = [.init(name:"filter[text]",value:text),.init(name:"page[limit]",value:"20")]
+        let response = try JSONDecoder().decode(Response.self,from:await metadata(components.url!))
+        return response.data.compactMap { item in
+            guard let id = Int(item.id) else { return nil }; let a = item.attributes
+            let poster = a.posterImage?.large ?? a.posterImage?.original ?? ""
+            return AnimeCandidate(id:id,name:a.canonicalTitle,russian:a.titles["ru_ru"] ?? a.titles["ru"],image:.init(original:poster,preview:a.posterImage?.small ?? poster),url:"https://kitsu.app/anime/\(a.slug)",kind:a.subtype,episodes:a.episodeCount,aired_on:a.startDate,catalog:.kitsu)
+        }
+    }
+    func automaticCoverCandidates(_ text: String) async throws -> [AnimeCandidate] {
+        do { let primary = try await search(text); if !primary.isEmpty { return primary } }
+        catch { if Task.isCancelled { throw CancellationError() } }
+        return try await search(text,catalog:.kitsu)
     }
     func sourcePage(_ url: URL) async throws -> String {
         let delay = max(0,nextSourceRequest.timeIntervalSinceNow)
