@@ -1,0 +1,97 @@
+name: Сборка и проверка АниПолки
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: anipolka-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  iphone:
+    runs-on: macos-26-intel
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Инструменты и версия SDK
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+          brew install xcodegen
+          xcodegen generate
+          mkdir -p build/artifacts
+      - name: Логика, сохранение, импорт, копии и политика сети
+        working-directory: Core
+        run: swift test
+      - name: Живая проверка поиска дунхуа и обложки
+        run: python3 scripts/check_catalog.py
+      - name: Release ARM64 для физического iPhone
+        run: |
+          set -o pipefail
+          xcodebuild -project AniPolka.xcodeproj -scheme AniPolka -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/device \
+            CODE_SIGNING_ALLOWED=NO build | tee build/device-build.log
+      - name: Упаковка и проверка IPA
+        run: |
+          mkdir -p build/package/Payload
+          cp -R build/device/Build/Products/Release-iphoneos/AniPolka.app build/package/Payload/
+          cd build/package
+          /usr/bin/zip -qry ../artifacts/AniPolka-unsigned.ipa Payload
+          cd ../..
+          python3 scripts/verify_ipa.py build/artifacts/AniPolka-unsigned.ipa
+          shasum -a 256 build/artifacts/AniPolka-unsigned.ipa > build/artifacts/SHA256.txt
+          cp INSTALL_RU.md build/artifacts/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AniPolka-unsigned-IPA
+          path: build/artifacts/
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: AniPolka-build-log
+          path: build/device-build.log
+          retention-days: 30
+  interface:
+    runs-on: macos-26-intel
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Подготовка проекта и симулятора iPhone 17 Pro Max
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          mkdir -p build
+          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); c=[(tuple(map(int,r.split("iOS-")[-1].split("-"))),x["udid"]) for r,ds in d["devices"].items() if ".iOS-" in r for x in ds if x["name"]=="iPhone 17 Pro Max"]; print(max(c)[1])')
+          echo "SIMULATOR_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE_ID"
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          xcrun simctl status_bar "$DEVICE_ID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
+      - name: Тесты нативного интерфейса и снимки экрана
+        run: |
+          set -o pipefail
+          xcodebuild -project AniPolka.xcodeproj -scheme AniPolka -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath build/simulator \
+            -resultBundlePath build/UITests.xcresult -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO test | tee build/ui-tests.log
+      - name: Экспорт снимков работающего приложения
+        if: always()
+        run: |
+          if [ -d build/UITests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/UITests.xcresult --output-path build/screenshots
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: AniPolka-simulator-verification
+          path: |
+            build/screenshots/
+            build/ui-tests.log
+            build/UITests.xcresult/
+          retention-days: 30
