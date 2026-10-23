@@ -128,7 +128,7 @@ struct HeroCard: View {
             HStack(alignment:.center,spacing:12) {
                 NavigationLink { EntryDetail(id:entry.id) } label: {
                     VStack(alignment:.leading,spacing:6) {
-                        Text(entry.title + (entry.favorite ? " ★" : "")).font(.title3.bold()).foregroundStyle(.primary).fixedSize(horizontal:false,vertical:true)
+                        Text(entry.displayTitle).font(.title3.bold()).foregroundStyle(.primary).fixedSize(horizontal:false,vertical:true)
                         Text(entry.subtitle).font(.subheadline).foregroundStyle(.secondary)
                     }.frame(maxWidth:.infinity,alignment:.leading)
                 }.buttonStyle(.plain)
@@ -146,7 +146,7 @@ struct ShelfRow: View {
                 HStack(spacing:14) {
                     CoverView(data:entry.coverData,url:entry.coverURL,entryID:entry.id).frame(width:76,height:100).clipShape(RoundedRectangle(cornerRadius:13))
                     VStack(alignment:.leading,spacing:7) {
-                        Text(entry.title + (entry.favorite ? " ★" : "")).font(.headline).foregroundStyle(.primary).fixedSize(horizontal:false,vertical:true)
+                        Text(entry.displayTitle).font(.headline).foregroundStyle(.primary).fixedSize(horizontal:false,vertical:true)
                         Text(entry.subtitle).font(.subheadline).foregroundStyle(.secondary)
                         if entry.status != .watching { Text(entry.status.rawValue).font(.caption).foregroundStyle(.blue) }
                     }.frame(maxWidth:.infinity,alignment:.leading)
@@ -163,7 +163,7 @@ struct GridCard: View {
             NavigationLink { EntryDetail(id:entry.id) } label: {
                 VStack(alignment:.leading,spacing:10) {
                     CoverView(data:entry.coverData,url:entry.coverURL,entryID:entry.id).frame(height:220).clipShape(RoundedRectangle(cornerRadius:18))
-                    Text(entry.title + (entry.favorite ? " ★" : "")).font(.headline).foregroundStyle(.primary).fixedSize(horizontal:false,vertical:true)
+                    Text(entry.displayTitle).font(.headline).foregroundStyle(.primary).fixedSize(horizontal:false,vertical:true)
                 }
             }.buttonStyle(.plain)
             HStack { Text("Серия \(entry.episode)").font(.subheadline).foregroundStyle(.secondary); Spacer(minLength:2); IncrementButton(entry:entry) }

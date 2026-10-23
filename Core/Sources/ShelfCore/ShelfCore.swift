@@ -33,6 +33,7 @@ public struct Entry: Codable, Identifiable, Equatable {
     public var updatedAt = Date()
     public var watchedAt: Date? = nil
     public init(title: String, episode: Int = 0) { self.title = title; self.episode = episode }
+    public var displayTitle: String { title + (favorite && !title.contains("⭐") && !title.contains("★") ? " ★" : "") }
     public var subtitle: String { (season.map { "Сезон \($0) · " } ?? "") + "Последняя серия: \(episode)" }
 }
 public struct Snapshot: Codable, Equatable {
