@@ -7,6 +7,7 @@ struct EntryDetail: View {
     @Environment(\.dismiss) var dismiss
     @State private var editing = false
     @State private var deleteConfirmation = false
+    @State private var showSources = false
     private var entry: Entry? { store.snapshot.entries.first { $0.id == id } }
     var body: some View {
         Group {
@@ -21,6 +22,11 @@ struct EntryDetail: View {
                             Spacer(); IncrementButton(entry:e)
                         }
                         HStack { Label(e.status.rawValue,systemImage:"bookmark"); Spacer(); Button { var copy = e; copy.favorite.toggle(); copy.updatedAt = Date(); _ = store.save(copy) } label: { Label(e.favorite ? "В избранном" : "В избранное",systemImage:e.favorite ? "star.fill" : "star") }.frame(minHeight:44) }.font(.subheadline)
+                        Button("Источники новых серий",systemImage:"bell.badge") { showSources = true }.buttonStyle(.bordered).controlSize(.large).accessibilityIdentifier("entry-sources")
+                        if let discovery = e.coverDiscovery { Text(discovery.message).font(.footnote).foregroundStyle(.secondary); if discovery.needsChoice { Button("Выбрать обложку") { editing = true } } }
+                        ForEach(e.subscriptions ?? []) { source in
+                            VStack(alignment:.leading,spacing:4) { Text(source.label).font(.subheadline.bold()); if let episode = source.lastEpisode { Text("В источнике доступна серия \(episode)").font(.subheadline).foregroundStyle(.secondary) }; if let error = source.error { Text(error).font(.caption).foregroundStyle(.orange) } }
+                        }
                         if !e.note.isEmpty { VStack(alignment:.leading,spacing:8) { Text("Заметка").font(.headline); Text(e.note).textSelection(.enabled) } }
                         if let url = validWebURL(e.watchURL) { Link(destination:url) { Label("Открыть страницу просмотра",systemImage:"play.rectangle").frame(maxWidth:.infinity,minHeight:48) }.buttonStyle(.borderedProminent) }
                         if let url = validWebURL(e.sourceURL) { Link("Карточка произведения: Shikimori ↗",destination:url).font(.footnote) }
@@ -29,6 +35,7 @@ struct EntryDetail: View {
                 }.background(ShelfDesign.background)
                     .toolbar { Button("Изменить") { editing = true }.accessibilityIdentifier("edit-entry") }
                     .sheet(isPresented:$editing) { EntryEditor(entry:e) {} }
+                    .sheet(isPresented:$showSources) { EntrySourcesView(entryID:id) }
                     .confirmationDialog("Удалить «\(e.title)» и прогресс?",isPresented:$deleteConfirmation,titleVisibility:.visible) {
                         Button("Удалить запись",role:.destructive) { if store.change({ $0.entries.removeAll { $0.id == id } }) { dismiss() } }
                     } message: { Text("Вернуть запись можно из заранее сохранённой резервной копии.") }
@@ -53,6 +60,7 @@ struct EntryEditor: View {
     @State private var validation: String?
     @State private var hasSeason = false
     @State private var loadingPhoto = false
+    @State private var coverChanged = false
     var body: some View {
         NavigationStack {
             Form {
@@ -74,9 +82,10 @@ struct EntryEditor: View {
                     }
                     if loading { ProgressView() }
                     if !alternatives.isEmpty {
-                        ScrollView(.horizontal) { HStack { ForEach(alternatives,id:\.self) { url in Button { entry.coverURL = url; entry.coverData = nil; alternatives = [] } label: { CoverView(data:nil,url:url).frame(width:120,height:90).clipShape(RoundedRectangle(cornerRadius:10)) }.accessibilityLabel("Выбрать изображение произведения") } } }
+                        ScrollView(.horizontal) { HStack { ForEach(alternatives,id:\.self) { url in Button { entry.coverURL = url; entry.coverData = nil; entry.coverDiscovery = nil; entry.coverLookupDisabled = false; coverChanged = true; alternatives = [] } label: { CoverView(data:nil,url:url).frame(width:120,height:90).clipShape(RoundedRectangle(cornerRadius:10)) }.accessibilityLabel("Выбрать изображение произведения") } } }
                     }
-                    if !entry.coverURL.isEmpty || entry.coverData != nil { Button("Убрать обложку",role:.destructive) { entry.coverURL = ""; entry.coverData = nil } }
+                    if !entry.coverURL.isEmpty || entry.coverData != nil { Button("Убрать обложку",role:.destructive) { entry.coverURL = ""; entry.coverData = nil; entry.coverDiscovery = nil; entry.coverLookupDisabled = true; coverChanged = true } }
+                    Toggle("Искать обложку автоматически",isOn:Binding(get:{entry.coverLookupDisabled != true},set:{entry.coverLookupDisabled = !$0; if $0 { entry.coverDiscovery = nil } }))
                 }
                 Section("Заметка и ссылка") {
                     TextField("Заметка",text:$entry.note,axis:.vertical).lineLimit(3...8)
@@ -90,13 +99,13 @@ struct EntryEditor: View {
                 ToolbarItem(placement:.confirmationAction) { Button("Сохранить") { save() }.disabled(loadingPhoto).accessibilityIdentifier("save-entry") }
             }
             .sheet(isPresented:$selectSource) { NavigationStack { SearchView(selectingCover:true,initialQuery:entry.title) { candidate in
-                if let c = candidate { entry.originalTitle = c.name; entry.sourceID = c.id; entry.sourceURL = c.pageURL; entry.coverURL = c.posterURL; entry.coverData = nil; if entry.title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty { entry.title = c.title } }
-                alternatives = []; selectSource = false
+                if let c = candidate { entry.originalTitle = c.name; entry.sourceID = c.id; entry.sourceURL = c.pageURL; entry.coverURL = c.posterURL; entry.coverData = nil; entry.coverLookupDisabled = false; entry.coverDiscovery = nil; if entry.title.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty { entry.title = c.title } }
+                coverChanged = true; alternatives = []; selectSource = false
             } } }
             .onAppear { hasSeason = entry.season != nil }
             .onChange(of:photo) { _, value in Task {
                 guard let value else { return }; loadingPhoto = true; defer { loadingPhoto = false }
-                do { guard let data = try await value.loadTransferable(type:Data.self), let normalized = NetworkService.normalized(data) else { throw ShelfError.invalid("Не удалось открыть изображение. Выберите файл до 20 МБ.") }; entry.coverData = normalized; entry.coverURL = "" }
+                do { guard let data = try await value.loadTransferable(type:Data.self), let normalized = NetworkService.normalized(data) else { throw ShelfError.invalid("Не удалось открыть изображение. Выберите файл до 20 МБ.") }; entry.coverData = normalized; entry.coverURL = ""; entry.coverDiscovery = nil; coverChanged = true }
                 catch { validation = error.localizedDescription }
             } }
             .alert("Проверьте данные",isPresented:Binding(get:{validation != nil},set:{if !$0 {validation = nil}})) { Button("Понятно",role:.cancel) {} } message: { Text(validation ?? "") }
@@ -110,6 +119,15 @@ struct EntryEditor: View {
         let old = store.snapshot.entries.first { $0.id == entry.id }
         if old?.episode != entry.episode { entry.watchedAt = Date() }
         entry.updatedAt = Date()
+        if let old {
+            // Фоновые обложки и проверки источников могли завершиться, пока открыт редактор.
+            entry.subscriptions = old.subscriptions; entry.releaseNotices = old.releaseNotices
+            if !coverChanged, entry.coverLookupDisabled != true, entry.coverURL.isEmpty, entry.coverData == nil, !old.coverURL.isEmpty {
+                entry.coverURL = old.coverURL; entry.coverData = old.coverData; entry.sourceID = old.sourceID
+                entry.sourceURL = old.sourceURL; entry.originalTitle = old.originalTitle; entry.coverDiscovery = old.coverDiscovery
+            }
+            if entry.coverData == nil, !entry.coverURL.isEmpty, entry.coverURL == old.coverURL { entry.coverData = old.coverData }
+        }
         if store.save(entry) { dismiss(); onSaved() }
         else { validation = store.error; store.error = nil }
     }

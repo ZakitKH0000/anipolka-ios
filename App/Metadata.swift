@@ -29,6 +29,7 @@ struct AnimeCandidate: Decodable, Identifiable {
     private var imageSession = NetworkService.makeSession(wifiOnly: false)
     private var nextRequest = Date.distantPast
     private var cooldown = Date.distantPast
+    private var nextSourceRequest = Date.distantPast
     var canLoadCovers: Bool { CoverPolicy.permits(wifiOnly: wifiOnly, connected: connected, wifi: wifi) }
     var revision: String { "\(connected)-\(wifi)-\(wifiOnly)" }
     init() {
@@ -66,6 +67,20 @@ struct AnimeCandidate: Decodable, Identifiable {
         var components = URLComponents(string: "https://shikimori.io/api/animes")!
         components.queryItems = [URLQueryItem(name: "search", value: text), .init(name:"limit",value:"30"), .init(name:"censored",value:"true")]
         return try JSONDecoder().decode([AnimeCandidate].self, from: await metadata(components.url!))
+    }
+    func sourcePage(_ url: URL) async throws -> String {
+        let delay = max(0,nextSourceRequest.timeIntervalSinceNow)
+        nextSourceRequest = Date().addingTimeInterval(delay + 1.2)
+        if delay > 0 { try await Task.sleep(for:.seconds(delay)) }
+        var request = URLRequest(url:url); request.timeoutInterval = 20
+        request.setValue("AniPolka/1.1 (personal episode tracker)",forHTTPHeaderField:"User-Agent")
+        let (bytes,response) = try await URLSession.shared.bytes(for:request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let final = http.url, AnivibePageParser.canonicalURL(final.absoluteString) != nil else { throw ShelfError.invalid("AniVibe временно недоступен или требует входа. Проверка не изменила данные источника.") }
+        var data = Data()
+        for try await byte in bytes { if data.count >= 8_000_000 { throw ShelfError.invalid("Страница источника слишком большая.") }; data.append(byte) }
+        try Task.checkCancellation()
+        guard let html = String(data:data,encoding:.utf8) else { throw ShelfError.invalid("Не удалось прочитать страницу источника.") }; return html
     }
     func alternatives(id: Int) async throws -> [String] {
         struct Shot: Decodable { let original: String }

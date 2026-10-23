@@ -13,6 +13,10 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert info['CFBundleSupportedPlatforms'] == ['iPhoneOS']
     assert info['UIDeviceFamily'] == [1]
     assert info['MinimumOSVersion'] == '17.0'
+    assert info['CFBundleShortVersionString'] == '1.1.0'
+    assert info['CFBundleVersion'] == '2'
+    assert info['UIBackgroundModes'] == ['fetch']
+    assert info['BGTaskSchedulerPermittedIdentifiers'] == ['com.zakitkh.anipolka.releases']
     b = z.read(root + 'AniPolka')
     assert b[:4] == b'\xcf\xfa\xed\xfe'
     assert struct.unpack_from('<I', b, 4)[0] == 0x0100000C, 'Expected ARM64'

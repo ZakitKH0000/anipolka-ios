@@ -14,7 +14,23 @@ public struct Preferences: Codable, Equatable {
     public var showContinue = true
     public var haptics = true
     public var wifiOnly = false
+    public var automaticCovers = true
+    public var releaseNotifications = false
+    public var backgroundChecks = true
     public init() {}
+    private enum CodingKeys: String, CodingKey { case theme, layout, sort, showContinue, haptics, wifiOnly, automaticCovers, releaseNotifications, backgroundChecks }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy:CodingKeys.self)
+        theme = try c.decodeIfPresent(Theme.self,forKey:.theme) ?? .dark
+        layout = try c.decodeIfPresent(Layout.self,forKey:.layout) ?? .list
+        sort = try c.decodeIfPresent(ShelfSort.self,forKey:.sort) ?? .recent
+        showContinue = try c.decodeIfPresent(Bool.self,forKey:.showContinue) ?? true
+        haptics = try c.decodeIfPresent(Bool.self,forKey:.haptics) ?? true
+        wifiOnly = try c.decodeIfPresent(Bool.self,forKey:.wifiOnly) ?? false
+        automaticCovers = try c.decodeIfPresent(Bool.self,forKey:.automaticCovers) ?? true
+        releaseNotifications = try c.decodeIfPresent(Bool.self,forKey:.releaseNotifications) ?? false
+        backgroundChecks = try c.decodeIfPresent(Bool.self,forKey:.backgroundChecks) ?? true
+    }
 }
 public struct Entry: Codable, Identifiable, Equatable {
     public var id: UUID = UUID()
@@ -32,6 +48,10 @@ public struct Entry: Codable, Identifiable, Equatable {
     public var coverData: Data? = nil
     public var updatedAt = Date()
     public var watchedAt: Date? = nil
+    public var coverDiscovery: CoverDiscovery? = nil
+    public var coverLookupDisabled: Bool? = nil
+    public var subscriptions: [ReleaseSubscription]? = nil
+    public var releaseNotices: [ReleaseNotice]? = nil
     public init(title: String, episode: Int = 0) { self.title = title; self.episode = episode }
     public var displayTitle: String { title + (favorite && !title.contains("⭐") && !title.contains("★") ? " ★" : "") }
     public var subtitle: String { (season.map { "Сезон \($0) · " } ?? "") + "Последняя серия: \(episode)" }
@@ -50,6 +70,17 @@ public struct Snapshot: Codable, Equatable {
                   (0...1_000_000).contains(e.episode), e.season == nil || (1...10000).contains(e.season!),
                   e.note.count <= 20000, e.watchURL.count <= 4000, e.coverURL.count <= 4000,
                   (e.coverData?.count ?? 0) <= 3_000_000 else { throw ShelfError.invalid("Недопустимые данные записи «\(e.title.prefix(60))».") }
+            guard (e.subscriptions?.count ?? 0) <= 20, (e.releaseNotices?.count ?? 0) <= 100 else { throw ShelfError.invalid("Слишком много источников или уведомлений в записи.") }
+            guard Set((e.subscriptions ?? []).map(\.id)).count == (e.subscriptions?.count ?? 0),
+                  Set((e.releaseNotices ?? []).map(\.id)).count == (e.releaseNotices?.count ?? 0) else { throw ShelfError.invalid("Повторяющиеся источники или уведомления.") }
+            for source in e.subscriptions ?? [] {
+                guard AnivibePageParser.canonicalURL(source.pageURL) != nil, source.label.count <= 500,
+                      source.optionID.count <= 150, source.lastEpisode == nil || (0...1_000_000).contains(source.lastEpisode!) else { throw ShelfError.invalid("Некорректные данные источника серий.") }
+            }
+            for notice in e.releaseNotices ?? [] {
+                guard AnivibePageParser.canonicalURL(notice.url) != nil, (1...1_000_000).contains(notice.episode),
+                      (0..<notice.episode).contains(notice.previousEpisode), notice.title.count <= 500, notice.id.count <= 200 else { throw ShelfError.invalid("Некорректная ссылка новой серии.") }
+            }
         }
         return self
     }

@@ -35,7 +35,7 @@ final class AniPolkaUITests: XCTestCase {
         let episode = app.textFields["entry-episode"]; episode.tap(); episode.typeText("7")
         app.buttons["save-entry"].tap()
         XCTAssertTrue(app.staticTexts["Тестовая история"].firstMatch.waitForExistence(timeout:5))
-        app.tabBars.buttons["Настройки"].tap(); app.buttons["text-import"].tap()
+        app.tabBars.buttons["Настройки"].tap(); reveal(app.buttons["text-import"]); app.buttons["text-import"].tap()
         let input = app.textViews["import-text"]; XCTAssertTrue(input.waitForExistence(timeout:5)); input.tap(); input.typeText("Неисправленнае название 33\nБез номера")
         reveal(app.buttons["preview-import"]); app.buttons["preview-import"].tap(); capture("text-import-review")
         reveal(app.buttons["apply-import"]); app.buttons["apply-import"].tap()
@@ -45,5 +45,14 @@ final class AniPolkaUITests: XCTestCase {
         start(extra:["-UIPreferredContentSizeCategoryName","UICTContentSizeCategoryAccessibilityXXXL"])
         capture("accessibility-large"); app.swipeUp(); capture("accessibility-long-title")
         app.tabBars.buttons["Настройки"].tap(); capture("accessibility-settings")
+    }
+    func testReleaseInboxAndPublicSourceInspection() {
+        start(); app.tabBars.buttons["Серии"].tap(); capture("release-inbox")
+        app.buttons["release-entry"].tap()
+        reveal(app.buttons["entry-sources"]); app.buttons["entry-sources"].tap()
+        XCTAssertTrue(app.buttons["inspect-source"].waitForExistence(timeout:5)); capture("episode-sources")
+        app.buttons["inspect-source"].tap()
+        XCTAssertTrue(app.buttons["source-option-kodik-910-1"].waitForExistence(timeout:30))
+        capture("public-source-options")
     }
 }

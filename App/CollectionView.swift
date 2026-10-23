@@ -7,6 +7,7 @@ struct RootView: View {
             ShelfView(favorites: false).tabItem { Label("Коллекция",systemImage:"square.stack.fill") }
             ShelfView(favorites: true).tabItem { Label("Избранное",systemImage:"star.fill") }
             NavigationStack { SearchView { _ in } }.tabItem { Label("Поиск",systemImage:"magnifyingglass") }
+            NavigationStack { ReleasesView() }.tabItem { Label("Серии",systemImage:"bell") }.badge(store.snapshot.entries.flatMap { $0.releaseNotices ?? [] }.filter { !$0.read }.count)
             NavigationStack { SettingsView() }.tabItem { Label("Настройки",systemImage:"slider.horizontal.3") }
         }
         .tint(.blue)

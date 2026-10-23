@@ -23,6 +23,9 @@ import UIKit
                 var e = Entry(title: title, episode: [24,26,20,11,150,48][i]); e.favorite = i == 0
                 e.coverData = DemoArt.cover(index: i); e.watchedAt = Date().addingTimeInterval(Double(-i * 3600)); preview.entries.append(e)
             }
+            let source = ReleaseSubscription(pageURL:"https://anivibe.pro/anime/44218",optionID:"kodik-910-1",label:"Тестовая озвучка · сезон 1 · Kodik",episode:26)
+            preview.entries[0].subscriptions = [source]; preview.entries[0].watchURL = source.pageURL
+            preview.entries[0].releaseNotices = [ReleaseNotice(subscription:source,entryTitle:preview.entries[0].title,episode:27,url:source.pageURL + "?episode=27&translation=910")]
             try? repository?.commit(preview); snapshot = preview
         }
     }

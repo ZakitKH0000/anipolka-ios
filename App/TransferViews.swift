@@ -33,6 +33,7 @@ struct SettingsView: View {
                 Toggle("Тактильный отклик при +1",isOn:store.preference(\.haptics))
                 Toggle("Обложки только через Wi-Fi",isOn:store.preference(\.wifiOnly)).accessibilityIdentifier("wifi-only")
             } header: { Text("Отклик и сеть") } footer: { Text("Сохранённые обложки доступны офлайн. Ограничение Wi-Fi действует на все загружаемые изображения, в том числе результаты поиска. Поиск названий использует любую сеть.") }
+            AutomationSettingsView()
             Section {
                 Button("Импорт текстового списка",systemImage:"text.badge.plus") { showTextImport = true }.accessibilityIdentifier("text-import")
                 Button("Сохранить копию в Файлы",systemImage:"square.and.arrow.up") { export() }.disabled(busy || store.loadFailure != nil)
@@ -41,11 +42,11 @@ struct SettingsView: View {
                 if let notice { Text(notice).font(.footnote).foregroundStyle(.secondary) }
             } header: { Text("Перенос и резервная копия") } footer: { Text("Копия содержит коллекцию, прогресс, порядок, настройки и уже сохранённые обложки. После выбора файла вы увидите предпросмотр восстановления. До подтверждения ничего не изменяется.") }
             Section("Об АниПолке") {
-                Label("АниПолка 1.0",systemImage:"books.vertical.fill")
+                Label("АниПолка 1.1",systemImage:"books.vertical.fill")
                 Text("Разработчик — Закир Халилов").font(.subheadline)
                 Text("Создано для личного использования.").font(.footnote).foregroundStyle(.secondary)
                 Link("Каталог и изображения: Shikimori",destination:URL(string:"https://shikimori.io")!)
-                Text("Коллекция хранится на iPhone. Без аккаунтов, рекламы и аналитики. В каталог отправляется только введённый поисковый запрос. При открытии ссылки используется выбранный вами сайт.").font(.footnote).foregroundStyle(.secondary)
+                Text("Коллекция хранится на iPhone. Без рекламы и аналитики. Для автоматического поиска обложек в каталог отправляется название истории. Проверка серий читает только выбранные вами публичные страницы источников.").font(.footnote).foregroundStyle(.secondary)
             }
         }.navigationTitle("Настройки")
             .sheet(isPresented:$showTextImport) { TextImportView() }
