@@ -7,3 +7,4 @@ build/
 *.ipa
 *.xcresult/
 local-private/
+__pycache__/

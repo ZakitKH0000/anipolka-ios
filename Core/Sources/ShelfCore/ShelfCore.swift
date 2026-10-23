@@ -52,7 +52,12 @@ public struct Snapshot: Codable, Equatable {
         }
         return self
     }
-    public func encoded() throws -> Data { _ = try validated(); return try JSONEncoder().encode(self) }
+    public func encoded() throws -> Data {
+        _ = try validated()
+        let data = try JSONEncoder().encode(self)
+        guard data.count <= 150_000_000 else { throw ShelfError.invalid("Коллекция превысила 150 МБ. Уменьшите количество обложек перед сохранением.") }
+        return data
+    }
     public static func decode(_ data: Data) throws -> Snapshot {
         guard data.count <= 150_000_000 else { throw ShelfError.invalid("Файл больше 150 МБ.") }
         do { return try JSONDecoder().decode(Snapshot.self, from: data).validated() }
@@ -133,7 +138,8 @@ public struct ImportRow: Identifiable, Equatable {
 }
 public enum TextListParser {
     public static func parse(_ text: String) -> [ImportRow] {
-        text.components(separatedBy: .newlines).compactMap { raw in
+        let source = text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text
+        return source.components(separatedBy: .newlines).compactMap { raw in
             let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.isEmpty else { return nil }
             // Only a trailing, separated number is progress. Ambiguous lines keep their full title.

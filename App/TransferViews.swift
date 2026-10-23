@@ -29,17 +29,17 @@ struct SettingsView: View {
                 Button("Ручной порядок") { showReorder = true }
                 Toggle("Продолжить просмотр",isOn:store.preference(\.showContinue))
             }
-            Section("Отклик и сеть") {
+            Section {
                 Toggle("Тактильный отклик при +1",isOn:store.preference(\.haptics))
                 Toggle("Обложки только через Wi-Fi",isOn:store.preference(\.wifiOnly)).accessibilityIdentifier("wifi-only")
-            } footer: { Text("Сохранённые обложки доступны офлайн. Ограничение Wi-Fi действует на все загружаемые изображения, в том числе результаты поиска. Поиск названий использует любую сеть.") }
-            Section("Перенос и резервная копия") {
+            } header: { Text("Отклик и сеть") } footer: { Text("Сохранённые обложки доступны офлайн. Ограничение Wi-Fi действует на все загружаемые изображения, в том числе результаты поиска. Поиск названий использует любую сеть.") }
+            Section {
                 Button("Импорт текстового списка",systemImage:"text.badge.plus") { showTextImport = true }.accessibilityIdentifier("text-import")
                 Button("Сохранить копию в Файлы",systemImage:"square.and.arrow.up") { export() }.disabled(busy || store.loadFailure != nil)
                 Button("Восстановить из Файлов",systemImage:"square.and.arrow.down") { showRestore = true }.disabled(busy)
                 if busy { ProgressView("Подготовка данных…") }
                 if let notice { Text(notice).font(.footnote).foregroundStyle(.secondary) }
-            } footer: { Text("Копия содержит коллекцию, прогресс, порядок, настройки и уже сохранённые обложки. После выбора файла вы увидите предпросмотр восстановления. До подтверждения ничего не изменяется.") }
+            } header: { Text("Перенос и резервная копия") } footer: { Text("Копия содержит коллекцию, прогресс, порядок, настройки и уже сохранённые обложки. После выбора файла вы увидите предпросмотр восстановления. До подтверждения ничего не изменяется.") }
             Section("Об АниПолке") {
                 Label("АниПолка 1.0",systemImage:"books.vertical.fill")
                 Text("Разработчик — Закир Халилов").font(.subheadline)

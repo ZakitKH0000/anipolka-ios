@@ -23,7 +23,7 @@ struct EntryDetail: View {
                         HStack { Label(e.status.rawValue,systemImage:"bookmark"); Spacer(); Button { var copy = e; copy.favorite.toggle(); copy.updatedAt = Date(); _ = store.save(copy) } label: { Label(e.favorite ? "В избранном" : "В избранное",systemImage:e.favorite ? "star.fill" : "star") }.frame(minHeight:44) }.font(.subheadline)
                         if !e.note.isEmpty { VStack(alignment:.leading,spacing:8) { Text("Заметка").font(.headline); Text(e.note).textSelection(.enabled) } }
                         if let url = validWebURL(e.watchURL) { Link(destination:url) { Label("Открыть страницу просмотра",systemImage:"play.rectangle").frame(maxWidth:.infinity,minHeight:48) }.buttonStyle(.borderedProminent) }
-                        if let url = validWebURL(e.sourceURL) { Link("Данные и обложка: Shikimori ↗",destination:url).font(.footnote) }
+                        if let url = validWebURL(e.sourceURL) { Link("Карточка произведения: Shikimori ↗",destination:url).font(.footnote) }
                         Button("Удалить из коллекции",role:.destructive) { deleteConfirmation = true }.frame(minHeight:44)
                     }.padding(20)
                 }.background(ShelfDesign.background)

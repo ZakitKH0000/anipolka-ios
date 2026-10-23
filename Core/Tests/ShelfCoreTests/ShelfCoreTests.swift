@@ -54,6 +54,7 @@ final class ShelfCoreTests: XCTestCase {
         XCTAssertEqual(rows.count,5); XCTAssertEqual(rows[0].title,"Мой дракон⭐"); XCTAssertEqual(rows[0].episode,24); XCTAssertTrue(rows[0].favorite)
         XCTAssertEqual(rows[1].title,"Исходнае название"); XCTAssertFalse(rows[1].recognized); XCTAssertEqual(rows[1].episode,0)
         XCTAssertEqual(rows[2].episode,150); XCTAssertEqual(rows[3].title,"86"); XCTAssertFalse(rows[3].recognized)
+        XCTAssertEqual(TextListParser.parse("\u{FEFF}Первая 3").first?.title,"Первая")
     }
     func testSortingFiltersAndRealManualOrder() throws {
         var s = Snapshot(); var a = Entry(title:"Альфа"); a.status = .planned; a.favorite = true
