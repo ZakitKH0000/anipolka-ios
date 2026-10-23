@@ -70,9 +70,6 @@ jobs:
           mkdir -p build
           DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); c=[(tuple(map(int,r.split("iOS-")[-1].split("-"))),x["udid"]) for r,ds in d["devices"].items() if ".iOS-" in r for x in ds if x["name"]=="iPhone 17 Pro Max"]; print(max(c)[1])')
           echo "SIMULATOR_ID=$DEVICE_ID" >> "$GITHUB_ENV"
-          xcrun simctl boot "$DEVICE_ID"
-          xcrun simctl bootstatus "$DEVICE_ID" -b
-          xcrun simctl status_bar "$DEVICE_ID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
       - name: Тесты нативного интерфейса и снимки экрана
         run: |
           set -o pipefail
