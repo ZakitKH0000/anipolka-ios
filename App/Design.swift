@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum ShelfDesign {
     static let background = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(red:0.045,green:0.052,blue:0.064,alpha:1) : UIColor(red:0.96,green:0.965,blue:0.98,alpha:1) })

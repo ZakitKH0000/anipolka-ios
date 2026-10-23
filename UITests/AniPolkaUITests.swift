@@ -8,6 +8,9 @@ final class AniPolkaUITests: XCTestCase {
         app.launch(); XCTAssertTrue(app.tabBars.buttons["Коллекция"].waitForExistence(timeout:15))
     }
     func capture(_ name: String) { let a = XCTAttachment(screenshot:app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a) }
+    func reveal(_ element: XCUIElement) {
+        for _ in 0..<8 { if element.isHittable { return }; app.swipeUp() }
+    }
     func testCollectionProgressUndoAndPersistence() {
         start(); capture("collection-dark")
         let increment = app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH 'increment-'")).firstMatch
@@ -34,8 +37,8 @@ final class AniPolkaUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Тестовая история"].firstMatch.waitForExistence(timeout:5))
         app.tabBars.buttons["Настройки"].tap(); app.buttons["text-import"].tap()
         let input = app.textViews["import-text"]; XCTAssertTrue(input.waitForExistence(timeout:5)); input.tap(); input.typeText("Неисправленнае название 33\nБез номера")
-        app.buttons["preview-import"].tap(); capture("text-import-review")
-        app.swipeUp(); app.buttons["apply-import"].tap()
+        reveal(app.buttons["preview-import"]); app.buttons["preview-import"].tap(); capture("text-import-review")
+        reveal(app.buttons["apply-import"]); app.buttons["apply-import"].tap()
         app.tabBars.buttons["Коллекция"].tap(); app.swipeUp(); capture("imported-collection")
     }
     func testAccessibilityLargeType() {

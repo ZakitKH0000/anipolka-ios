@@ -111,8 +111,14 @@ public final class ShelfRepository {
         let token = EpisodeUndo(id: id, previous: previous, applied: next.entries[i]); try commit(next); return token
     }
     public func undo(_ token: EpisodeUndo) throws {
-        guard let i = snapshot.entries.firstIndex(where: { $0.id == token.id }), snapshot.entries[i] == token.applied else { return }
-        var next = snapshot; next.entries[i] = token.previous; try commit(next)
+        guard let i = snapshot.entries.firstIndex(where: { $0.id == token.id }),
+              snapshot.entries[i].episode == token.applied.episode,
+              snapshot.entries[i].watchedAt == token.applied.watchedAt else { return }
+        var next = snapshot
+        next.entries[i].episode = token.previous.episode
+        next.entries[i].watchedAt = token.previous.watchedAt
+        if next.entries[i].updatedAt == token.applied.updatedAt { next.entries[i].updatedAt = token.previous.updatedAt }
+        try commit(next)
     }
 }
 public struct ImportRow: Identifiable, Equatable {

@@ -19,11 +19,13 @@
 
 ## Сборка без Mac
 
-Приватный репозиторий: https://github.com/ZakitKH0000/anipolka-ios
+Публичный репозиторий исходного кода: https://github.com/ZakitKH0000/anipolka-ios
 
 Push в main либо ручной запуск Actions → «Сборка и проверка АниПолки». Два задания создают unsigned Release IPA для реального iPhone и отдельно выполняют тесты интерфейса на симуляторе iPhone 17 Pro Max. XcodeGen генерирует проект; сторонних Swift-пакетов нет. Конкретные результаты проверок фиксируются в `docs/VERIFICATION_RU.md` после CI.
 
 Артефакт `AniPolka-unsigned-IPA` содержит IPA, SHA-256 и [инструкцию установки](INSTALL_RU.md). Он хранится 90 дней; готовый IPA также сохраняется локально. Сборка не требует Apple ID или сертификатов; подпись выполняется вашим инструментом на Windows.
+
+Репозиторий открыт по решению владельца для сборки на стандартных GitHub-hosted runners. Личная коллекция, её исходный список и резервные копии в репозиторий и сборку не включаются.
 
 На Mac: `brew install xcodegen`, `xcodegen generate`, открыть `AniPolka.xcodeproj`. Логика без UIKit: `cd Core && swift test`.
 

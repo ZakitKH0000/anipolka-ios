@@ -23,6 +23,13 @@ final class ShelfCoreTests: XCTestCase {
         XCTAssertThrowsError(try r.commit(broken)); XCTAssertEqual(r.snapshot,s); XCTAssertEqual(try Data(contentsOf:r.url),bytes)
         XCTAssertThrowsError(try Snapshot.decode(Data("broken".utf8))); XCTAssertEqual(try Data(contentsOf:r.url),bytes)
     }
+    func testUndoPreservesBackgroundCoverAndUnrelatedEdits() throws {
+        let r = try repository(); var s = Snapshot(); let e = Entry(title:"История",episode:24); s.entries = [e]; try r.commit(s)
+        let token = try XCTUnwrap(r.increment(e.id)); var next = r.snapshot
+        next.entries[0].coverData = Data([1,2]); next.entries[0].favorite = true; try r.commit(next)
+        try r.undo(token); XCTAssertEqual(r.snapshot.entries[0].episode,24)
+        XCTAssertEqual(r.snapshot.entries[0].coverData,Data([1,2])); XCTAssertTrue(r.snapshot.entries[0].favorite)
+    }
     func testFailedDiskWriteNeverPublishesState() throws {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let r = try ShelfRepository(url:path.appendingPathComponent("shelf.json"))
