@@ -78,7 +78,7 @@ struct AnimeCandidate: Decodable, Identifiable {
             struct Item: Decodable {
                 struct Attributes: Decodable {
                     struct Poster: Decodable { let large: String?; let original: String?; let small: String? }
-                    let canonicalTitle: String; let titles: [String:String]; let slug: String
+                    let canonicalTitle: String; let titles: [String:String?]; let slug: String
                     let posterImage: Poster?; let subtype: String?; let episodeCount: Int?; let startDate: String?
                 }
                 let id: String; let attributes: Attributes
@@ -91,7 +91,8 @@ struct AnimeCandidate: Decodable, Identifiable {
         return response.data.compactMap { item in
             guard let id = Int(item.id) else { return nil }; let a = item.attributes
             let poster = a.posterImage?.large ?? a.posterImage?.original ?? ""
-            return AnimeCandidate(id:id,name:a.canonicalTitle,russian:a.titles["ru_ru"] ?? a.titles["ru"],image:.init(original:poster,preview:a.posterImage?.small ?? poster),url:"https://kitsu.app/anime/\(a.slug)",kind:a.subtype,episodes:a.episodeCount,aired_on:a.startDate,catalog:.kitsu)
+            let russian = a.titles["ru_ru"].flatMap { $0 } ?? a.titles["ru"].flatMap { $0 }
+            return AnimeCandidate(id:id,name:a.canonicalTitle,russian:russian,image:.init(original:poster,preview:a.posterImage?.small ?? poster),url:"https://kitsu.app/anime/\(a.slug)",kind:a.subtype,episodes:a.episodeCount,aired_on:a.startDate,catalog:.kitsu)
         }
     }
     func automaticCoverCandidates(_ text: String) async throws -> [AnimeCandidate] {

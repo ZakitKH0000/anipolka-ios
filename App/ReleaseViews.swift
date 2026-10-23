@@ -44,7 +44,7 @@ struct ReleasesView: View {
                     }
                 }
             }
-        }.navigationTitle("Новые серии").refreshable { await assistant.checkReleases() }
+        }.buttonStyle(.borderless).navigationTitle("Новые серии").refreshable { await assistant.checkReleases() }
     }
     private func markRead(entryID: UUID,id: String) {
         _ = store.change { state in
@@ -103,7 +103,7 @@ struct EntrySourcesView: View {
                     Text("VK: подключение требует регистрации приложения VK ID и разрешённого доступа к API публикаций/видео. В этой версии автоматическая проверка VK не подключена.").font(.footnote).foregroundStyle(.secondary)
                     Text("Проверяется наличие серий на выбранной публичной странице. Видео не скачиваются. Плеер открывается на самом сайте.").font(.footnote).foregroundStyle(.secondary)
                 }
-            }.navigationTitle("Источники серий").navigationBarTitleDisplayMode(.inline)
+            }.buttonStyle(.borderless).navigationTitle("Источники серий").navigationBarTitleDisplayMode(.inline)
                 .toolbar { Button("Готово") { dismiss() } }
                 .onAppear {
                     if address.isEmpty {
