@@ -23,9 +23,9 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Оформление") {
-                Picker("Тема",selection:store.preference(\.theme)) { ForEach(Theme.allCases,id:\.self) { Text($0.rawValue).tag($0) } }.accessibilityIdentifier("theme")
-                Picker("Вид коллекции",selection:store.preference(\.layout)) { ForEach(Layout.allCases,id:\.self) { Text($0.rawValue).tag($0) } }
-                Picker("Сортировка",selection:store.preference(\.sort)) { ForEach(ShelfSort.allCases,id:\.self) { Text($0.rawValue).tag($0) } }
+                PreferencePicker(title:"Тема",choices:Theme.allCases,value:store.preference(\.theme),name:{$0.rawValue}).accessibilityIdentifier("theme")
+                PreferencePicker(title:"Вид коллекции",choices:Layout.allCases,value:store.preference(\.layout),name:{$0.rawValue})
+                PreferencePicker(title:"Сортировка",choices:ShelfSort.allCases,value:store.preference(\.sort),name:{$0.rawValue})
                 Button("Ручной порядок") { showReorder = true }
                 Toggle("Продолжить просмотр",isOn:store.preference(\.showContinue))
             }
@@ -107,6 +107,28 @@ struct SettingsView: View {
         }
     }
 }
+/// Large accessibility sizes need a full value rather than a truncated trailing label.
+private struct PreferencePicker<Choice: Hashable>: View {
+    let title: String
+    let choices: [Choice]
+    @Binding var value: Choice
+    let name: (Choice) -> String
+    @Environment(\.dynamicTypeSize) private var typeSize
+    private var picker: some View {
+        Picker(title,selection:$value) { ForEach(choices,id:\.self) { Text(name($0)).tag($0) } }
+    }
+    var body: some View {
+        if typeSize.isAccessibilitySize {
+            Menu { picker } label: {
+                VStack(alignment:.leading,spacing:8) {
+                    Text(title).foregroundStyle(.primary)
+                    Text(name(value)).foregroundStyle(.blue).fixedSize(horizontal:false,vertical:true)
+                }.frame(maxWidth:.infinity,alignment:.leading).padding(.vertical,8)
+            }.accessibilityLabel(title).accessibilityValue(name(value))
+        } else { picker }
+    }
+}
+
 struct TextImportView: View {
     @EnvironmentObject var store: ShelfStore
     @Environment(\.dismiss) var dismiss
