@@ -3,6 +3,7 @@ import SwiftUI
 struct ReleasesView: View {
     @EnvironmentObject var store: ShelfStore
     @EnvironmentObject var assistant: ShelfAssistant
+    @Environment(\.openURL) private var openURL
     private var notices: [(UUID,ReleaseNotice)] { store.snapshot.entries.flatMap { e in (e.releaseNotices ?? []).map { (e.id,$0) } }.sorted { $0.1.foundAt > $1.1.foundAt } }
     var body: some View {
         List {
@@ -26,10 +27,10 @@ struct ReleasesView: View {
                             if notice.episode - notice.previousEpisode > 1 { Text("Предыдущая отметка источника: \(notice.previousEpisode)").font(.caption).foregroundStyle(.secondary) }
                             if let source = notice.sourceLabel { Text("AniVibe · \(source)").font(.caption).foregroundStyle(.secondary) }
                             Text(notice.foundAt,style:.date).font(.caption).foregroundStyle(.secondary)
-                            if let url = validWebURL(notice.url) { Link("Открыть просмотр ↗",destination:url).simultaneousGesture(TapGesture().onEnded { markRead(entryID:entryID,id:notice.id) }) }
-                            NavigationLink("Карточка произведения") { EntryDetail(id:entryID) }.font(.footnote).accessibilityIdentifier("release-entry")
+                            if let url = validWebURL(notice.url) { Button("Открыть просмотр ↗") { markRead(entryID:entryID,id:notice.id); openURL(url) } }
                         }.padding(.vertical,6)
                             .swipeActions { Button("Прочитано") { markRead(entryID:entryID,id:notice.id) }.tint(.blue) }
+                        NavigationLink("Карточка произведения") { EntryDetail(id:entryID) }.font(.footnote).accessibilityIdentifier("release-entry")
                     }
                 }
             }
@@ -80,7 +81,7 @@ struct EntrySourcesView: View {
                         Text("Выберите нужные сезон и озвучку. Последняя серия на сайте не всегда использует вашу сквозную нумерацию.").font(.footnote).foregroundStyle(.secondary)
                         ForEach(page.options) { option in
                             Button {
-                                if assistant.connect(page:page,option:option,entryID:entryID) { self.page = nil; message = "Источник подключён. Сейчас доступна серия \(option.episode). Уведомления начнутся со следующих новых серий."; assistant.scheduleBackground(); assistant.queueCovers() }
+                                if assistant.connect(page:page,option:option,entryID:entryID) { self.page = nil; message = "Источник подключён. Сейчас доступна серия \(option.episode). Следующие выпуски появятся во вкладке «Серии». Для системных уведомлений включите их в Настройках АниПолки."; assistant.scheduleBackground(); assistant.queueCovers() }
                             } label: {
                                 VStack(alignment:.leading,spacing:5) { Text(option.label).foregroundStyle(.primary); Text("Доступно серий: \(option.episode) · Подключить").font(.subheadline).foregroundStyle(.blue) }
                             }.disabled((entry?.subscriptions ?? []).contains(where:{$0.pageURL == page.url && $0.optionID == option.id})).accessibilityIdentifier("source-option-\(option.id)")
