@@ -4,12 +4,18 @@
 
 Разработчик — **Закир Халилов**. Создано для личного использования.
 
-**[Готовые версии IPA](https://github.com/ZakitKH0000/anipolka-ios/releases)** · [Установка с Windows](INSTALL_RU.md) · [Результаты проверок](docs/VERIFICATION_RU.md) · [Источники и уведомления 1.1](docs/SOURCES_RU.md)
+**[Скачать IPA 1.1](https://github.com/ZakitKH0000/anipolka-ios/releases/tag/v1.1.0)** · [Установка с Windows](INSTALL_RU.md) · [Результаты проверок](docs/VERIFICATION_RU.md) · [Источники и уведомления](docs/SOURCES_RU.md)
 
 <p>
   <img src="docs/screenshots/collection-dark.png" width="240" alt="Тёмная коллекция на симуляторе">
   <img src="docs/screenshots/settings-dark.png" width="240" alt="Настройки АниПолки">
   <img src="docs/screenshots/collection-light.png" width="240" alt="Светлая коллекция на симуляторе">
+</p>
+
+<p>
+  <img src="docs/screenshots/automatic-donghua-cover.png" width="240" alt="Автоматически найденная и сохранённая обложка дунхуа">
+  <img src="docs/screenshots/release-inbox.png" width="240" alt="Новые серии выбранных источников">
+  <img src="docs/screenshots/episode-sources.png" width="240" alt="Подписка на конкретную озвучку">
 </p>
 
 Реальные снимки симулятора с тестовыми названиями и локальными иллюстрациями. При первом обычном запуске коллекция пустая. Официальные обложки загружаются из каталогов; личная коллекция не включена в сборку.
