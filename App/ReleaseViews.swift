@@ -8,6 +8,9 @@ struct ReleasesView: View {
     var body: some View {
         List {
             Section {
+                NavigationLink { WeekView() } label: { Label("Неделя: выходы и премьеры",systemImage:"calendar") }.accessibilityIdentifier("open-week")
+            }
+            Section {
                 if store.demo { Text("Предпросмотр: тестовые история, озвучка и новый выпуск.").font(.caption).foregroundStyle(.secondary) }
                 Button { Task { await assistant.checkReleases() } } label: {
                     HStack { Label("Проверить сейчас",systemImage:"arrow.clockwise"); if assistant.checking { Spacer(); ProgressView() } }
@@ -57,6 +60,7 @@ struct ReleasesView: View {
 
 struct EntrySourcesView: View {
     let entryID: UUID
+    var initialAddress: String? = nil
     @EnvironmentObject var store: ShelfStore
     @EnvironmentObject var assistant: ShelfAssistant
     @Environment(\.dismiss) var dismiss
@@ -65,6 +69,8 @@ struct EntrySourcesView: View {
     @State private var loading = false
     @State private var message: String?
     @State private var removing: UUID?
+    @State private var suggestions: [AnivibeCatalog.Page]?
+    @State private var searching = false
     private var entry: Entry? { store.snapshot.entries.first(where:{$0.id == entryID}) }
     var body: some View {
         NavigationStack {
@@ -72,26 +78,45 @@ struct EntrySourcesView: View {
                 Section {
                     TextField("https://anivibe.pro/anime/…",text:$address,axis:.vertical).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("source-url")
                     Button("Проверить страницу AniVibe") { load() }.disabled(loading || address.isEmpty).accessibilityIdentifier("inspect-source")
+                    Button { findPages() } label: { HStack { Label("Найти на AniVibe по названиям",systemImage:"text.magnifyingglass"); if searching { Spacer(); ProgressView() } } }
+                        .disabled(searching || entry == nil).accessibilityIdentifier("find-anivibe")
+                    if let suggestions {
+                        if suggestions.isEmpty { Text("Страница не найдена ни по одному названию. Добавьте английское или оригинальное название в «Другие названия» либо вставьте ссылку вручную.").font(.footnote).foregroundStyle(.secondary) }
+                        ForEach(suggestions) { page in
+                            Button { address = page.url; self.suggestions = nil; load() } label: {
+                                VStack(alignment:.leading,spacing:3) { Text(page.slugName.capitalized).foregroundStyle(.primary); Text(page.url).font(.caption).foregroundStyle(.secondary) }
+                            }
+                        }
+                    }
                     if loading { ProgressView("Читаю доступные серии…") }
                     if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
                 } header: { Text("Добавить источник") } footer: { Text("Вставьте страницу нужного произведения с сайта. Обложка может подставиться автоматически. Название и ваш прогресс сохранятся.") }
                 if let page {
                     Section {
                         Text(page.title).font(.headline)
+                        if let entry, !TitleMatcher.matches(page.names + [page.title],entry) {
+                            Label("Названия страницы не совпали ни с одним названием этой истории. Проверьте, что это то же произведение и нужный сезон.",systemImage:"exclamationmark.triangle").font(.footnote).foregroundStyle(.orange).accessibilityIdentifier("source-mismatch")
+                        }
                         Text("Выберите нужные сезон и озвучку. Последняя серия на сайте не всегда использует вашу сквозную нумерацию.").font(.footnote).foregroundStyle(.secondary)
-                        ForEach(page.options) { option in
+                        ForEach(Dubs.sorted(page.options,favorites:store.snapshot.preferences.favoriteDubs)) { option in
+                            HStack {
+                            favoriteButton(option.label)
                             Button {
                                 if assistant.connect(page:page,option:option,entryID:entryID) { self.page = nil; message = "Источник подключён. Сейчас доступна серия \(option.episode). Следующие выпуски появятся во вкладке «Серии». Для системных уведомлений включите их в Настройках АниПолки."; assistant.scheduleBackground(); assistant.queueCovers() }
                             } label: {
                                 VStack(alignment:.leading,spacing:5) { Text(option.label).foregroundStyle(.primary); Text("Доступно серий: \(option.episode) · Подключить").font(.subheadline).foregroundStyle(.blue) }
                             }.disabled((entry?.subscriptions ?? []).contains(where:{$0.pageURL == page.url && $0.optionID == option.id})).accessibilityIdentifier("source-option-\(option.id)")
+                            }
                         }
                     } header: { Text("Найдено на странице") }
                 }
                 Section("Мои источники") {
                     ForEach(entry?.subscriptions ?? []) { source in
                         VStack(alignment:.leading,spacing:8) {
-                            Toggle(source.label,isOn:Binding(get:{source.enabled},set:{ value in update(source.id) { $0.enabled = value }; assistant.scheduleBackground() }))
+                            HStack {
+                                favoriteButton(source.label)
+                                Toggle(source.label,isOn:Binding(get:{source.enabled},set:{ value in update(source.id) { $0.enabled = value }; assistant.scheduleBackground() }))
+                            }
                             if let episode = source.lastEpisode { Text("Последняя доступная: \(episode)").font(.subheadline) }
                             if let checked = source.lastCheckedAt { Text("Проверено: \(checked.formatted(date:.abbreviated,time:.shortened))").font(.caption).foregroundStyle(.secondary) }
                             if let error = source.error { Text(error).font(.caption).foregroundStyle(.orange) }
@@ -107,6 +132,7 @@ struct EntrySourcesView: View {
             }.buttonStyle(.borderless).navigationTitle("Источники серий").navigationBarTitleDisplayMode(.inline)
                 .toolbar { Button("Готово") { dismiss() } }
                 .onAppear {
+                    if address.isEmpty, let initialAddress { address = initialAddress }
                     if address.isEmpty {
                         if let value = entry?.watchURL, AnivibePageParser.canonicalURL(value) != nil { address = value }
                         else if let id = entry?.sourceID { address = "https://anivibe.pro/anime/\(id)" }
@@ -119,6 +145,19 @@ struct EntrySourcesView: View {
     }
     private func update(_ id: UUID,_ change: (inout ReleaseSubscription)->Void) {
         _ = store.change { state in guard let i = state.entries.firstIndex(where:{$0.id == entryID}), let j = state.entries[i].subscriptions?.firstIndex(where:{$0.id == id}) else { return }; change(&state.entries[i].subscriptions![j]) }
+    }
+    /// Star a dubbing team: its tracks come first on every page, and the collection can be filtered by it.
+    private func favoriteButton(_ label: String) -> some View {
+        let name = Dubs.name(fromLabel:label)
+        let favorite = Dubs.isFavorite(name,in:store.snapshot.preferences.favoriteDubs)
+        return Button { _ = store.change { $0.preferences.favoriteDubs = Dubs.toggled(name,in:$0.preferences.favoriteDubs) } } label: {
+            Image(systemName:favorite ? "star.fill" : "star").foregroundStyle(.yellow).frame(width:36,height:44)
+        }.accessibilityLabel(favorite ? "Убрать «\(name)» из любимых озвучек" : "Добавить «\(name)» в любимые озвучки")
+    }
+    private func findPages() {
+        guard let entry else { return }
+        searching = true; suggestions = nil
+        Task { defer { searching = false }; do { suggestions = try await assistant.anivibeCandidates(for:entry) } catch { message = error.localizedDescription } }
     }
     private func load() {
         loading = true; message = nil; page = nil

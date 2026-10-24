@@ -38,6 +38,10 @@ jobs:
         run: |
           mkdir -p build/package/Payload
           cp -R build/device/Build/Products/Release-iphoneos/AniPolka.app build/package/Payload/
+          # Ad-hoc signature only records the App Group entitlement for signing tools that keep it;
+          # no certificate or secret is involved, and the user still signs the IPA.
+          codesign --force --sign - --entitlements build/AniPolkaWidgets.entitlements build/package/Payload/AniPolka.app/PlugIns/AniPolkaWidgets.appex
+          codesign --force --sign - --entitlements build/AniPolka.entitlements build/package/Payload/AniPolka.app
           cd build/package
           /usr/bin/zip -qry ../artifacts/AniPolka-unsigned.ipa Payload
           cd ../..

@@ -7,6 +7,11 @@ struct AutomationSettingsView: View {
     @State private var permissionMessage: String?
     var body: some View {
         Group {
+            DigestSettingsSection()
+            Section {
+                Text(WidgetBridge.shared.available ? "Виджеты получают данные коллекции: «Продолжить просмотр» на экране «Домой» и строка на экране блокировки." : "Общая папка для виджетов недоступна: способ подписи не сохранил App Group. Приложение работает полностью, а виджет покажет подсказку вместо списка.").font(.footnote).foregroundStyle(.secondary)
+                Text("Ссылки из меню «Поделиться»: в приложении «Команды» создайте команду с действием «Добавить ссылку в АниПолку» и включите «Показывать в меню „Поделиться“» для ссылок.").font(.footnote).foregroundStyle(.secondary)
+            } header: { Text("Виджеты и «Команды»") }
             Section {
                 Toggle("Автоматически искать обложки",isOn:store.preference(\.automaticCovers)).accessibilityIdentifier("automatic-covers")
                 Button { assistant.queueCovers(force:true) } label: { HStack { Text("Найти недостающие обложки"); if assistant.findingCovers { Spacer(); ProgressView() } } }.disabled(assistant.findingCovers)

@@ -11,7 +11,7 @@ import UserNotifications
     private let network: NetworkService
     private var coverTask: Task<Void,Never>?
     private var coverAttempts: [UUID:Date] = [:]
-    init(store: ShelfStore, network: NetworkService) { self.store = store; self.network = network; UNUserNotificationCenter.current().delegate = NotificationBridge.shared }
+    init(store: ShelfStore, network: NetworkService) { self.store = store; self.network = network }
 
     func queueCovers(force: Bool = false) {
         let previewProbe = store.demo && ProcessInfo.processInfo.arguments.contains("--live-covers")
@@ -32,43 +32,43 @@ import UserNotifications
                       let entry = store.snapshot.entries.first(where:{$0.id == id}), entry.coverData == nil, entry.coverLookupDisabled != true else { continue }
                 coverAttempts[id] = Date()
                 do {
-                    var address = entry.coverURL
-                    if address.isEmpty {
-                        let query = TitleIdentity.query(entry.title)
-                        let candidates = try await network.automaticCoverCandidates(query)
-                        try Task.checkCancellation()
-                        guard let current = store.snapshot.entries.first(where:{$0.id == id}), current.title == entry.title, current.coverURL.isEmpty, current.coverData == nil, current.coverLookupDisabled != true else { continue }
-                        if let index = TitleIdentity.uniqueExactMatch(query:query,candidates:candidates.map { [$0.title,$0.name] }) {
-                            let candidate = candidates[index]; address = candidate.posterURL
-                            guard !address.isEmpty else { setDiscovery(id:id,title:entry.title,message:"Произведение найдено, но в каталоге нет обложки. Можно выбрать свою.",needsChoice:false); continue }
-                            _ = store.change { state in
-                                guard let i = state.entries.firstIndex(where:{$0.id == id}) else { return }
-                                state.entries[i].coverURL = candidate.posterURL
-                                state.entries[i].sourceID = candidate.shikimoriID; state.entries[i].sourceURL = candidate.pageURL
-                                state.entries[i].originalTitle = candidate.name
-                                state.entries[i].coverDiscovery = CoverDiscovery(query:entry.title,message:"Обложка найдена автоматически: \(candidate.title)",needsChoice:false)
-                            }
-                        } else {
-                            setDiscovery(id:id,title:entry.title,message:candidates.isEmpty ? "Обложка не найдена. Можно уточнить название или выбрать свою." : "Найдены похожие произведения. Выберите подходящую обложку.",needsChoice:!candidates.isEmpty)
-                            continue
-                        }
-                    }
-                    if !address.isEmpty {
-                        let data = try await network.image(address); try Task.checkCancellation()
-                        store.cacheCover(id:id,url:address,data:data)
+                    let result = try await network.automaticCover(entry)
+                    try Task.checkCancellation()
+                    guard force || store.snapshot.preferences.automaticCovers else { return }
+                    switch result {
+                    case .found(let cover):
+                        _ = store.change { _ = $0.applyResolvedCover(cover,to:entry) }
+                    case .notFound(let needsChoice):
+                        setDiscovery(entry:entry,message:needsChoice ? "Найдены похожие произведения. Выберите подходящую обложку." : "В доступных каталогах настоящая обложка не найдена. Поиск можно повторить позже.",needsChoice:needsChoice)
                     }
                 } catch {
                     if Task.isCancelled { return }
-                    setDiscovery(id:id,title:entry.title,message:"Не удалось загрузить обложку. Можно повторить поиск.",needsChoice:false)
+                    setDiscovery(entry:entry,message:"Не удалось загрузить обложку. Можно повторить поиск.",needsChoice:false)
                 }
             }
         }
     }
-    private func setDiscovery(id: UUID,title: String,message: String,needsChoice: Bool) {
+    private func setDiscovery(entry: Entry,message: String,needsChoice: Bool) {
         _ = store.change { state in
-            guard let i = state.entries.firstIndex(where:{$0.id == id}), state.entries[i].title == title else { return }
-            state.entries[i].coverDiscovery = CoverDiscovery(query:title,message:message,needsChoice:needsChoice)
+            guard let i = state.entries.firstIndex(where:{$0.id == entry.id}), state.entries[i].title == entry.title,
+                  state.entries[i].coverURL == entry.coverURL, state.entries[i].coverData == entry.coverData,
+                  state.entries[i].coverLookupDisabled != true else { return }
+            state.entries[i].coverDiscovery = CoverDiscovery(query:entry.title,message:message,needsChoice:needsChoice)
         }
+    }
+    private var anivibePages: (loaded: Date,pages: [AnivibeCatalog.Page])?
+    /// Pages whose address matches any known name of the entry. The list is cached for a day.
+    func anivibeCandidates(for entry: Entry) async throws -> [AnivibeCatalog.Page] {
+        if anivibePages == nil || anivibePages!.loaded.timeIntervalSinceNow < -86400 {
+            let index = try await network.anivibeSitemap(AnivibeCatalog.sitemapIndex)
+            var locations: [String] = []
+            for file in AnivibeCatalog.sitemapFiles(in:index) {
+                try Task.checkCancellation()
+                locations += AnivibeCatalog.locations(in:try await network.anivibeSitemap(file))
+            }
+            anivibePages = (Date(),AnivibeCatalog.pages(in:locations))
+        }
+        return AnivibeCatalog.candidates(for:entry,in:anivibePages?.pages ?? [])
     }
     func readPage(_ address: String) async throws -> SourcePage {
         guard let url = AnivibePageParser.canonicalURL(address) else { throw ShelfError.invalid("Вставьте HTTPS-ссылку на страницу произведения: anivibe.pro/anime/…") }
@@ -82,6 +82,7 @@ import UserNotifications
             guard !sources.contains(where:{$0.pageURL == page.url && $0.optionID == option.id}) else { return }
             sources.append(ReleaseSubscription(pageURL:page.url,optionID:option.id,label:option.label,episode:option.episode))
             state.entries[i].subscriptions = sources
+            state.entries[i].learnNames(page.names)
             if state.entries[i].watchURL.isEmpty { state.entries[i].watchURL = page.watchURL(for:option,episode:option.episode) }
             if state.entries[i].coverData == nil, state.entries[i].coverURL.isEmpty, state.entries[i].coverLookupDisabled != true, let cover = page.coverURL {
                 state.entries[i].coverURL = cover; state.entries[i].coverLookupDisabled = false
@@ -116,7 +117,7 @@ import UserNotifications
                 }
                 if committed, let found {
                     newCount += 1
-                    if store.snapshot.preferences.releaseNotifications { await NotificationBridge.shared.deliver(found) }
+                    if store.snapshot.preferences.releaseNotifications { await NotificationBridge.shared.deliver(found,entryID:entryID) }
                 }
             } catch {
                 if Task.isCancelled { break }
@@ -136,22 +137,5 @@ import UserNotifications
         let request = BGAppRefreshTaskRequest(identifier:Self.refreshID)
         request.earliestBeginDate = Date().addingTimeInterval(6*3600)
         try? BGTaskScheduler.shared.submit(request)
-    }
-}
-
-@MainActor final class NotificationBridge: NSObject, UNUserNotificationCenterDelegate {
-    static let shared = NotificationBridge()
-    func enable() async -> Bool { (try? await UNUserNotificationCenter.current().requestAuthorization(options:[.alert,.sound,.badge])) ?? false }
-    func deliver(_ notice: ReleaseNotice) async {
-        let content = UNMutableNotificationContent()
-        content.title = "Новая серия · \(notice.title)"
-        content.body = "AniVibe · \(notice.sourceLabel ?? "Выбранная дорожка"): серия \(notice.episode). Нажмите, чтобы открыть просмотр."
-        content.sound = .default; content.userInfo = ["watchURL":notice.url]
-        try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier:notice.id,content:content,trigger:nil))
-    }
-    func userNotificationCenter(_ center: UNUserNotificationCenter,willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner,.sound,.list] }
-    func userNotificationCenter(_ center: UNUserNotificationCenter,didReceive response: UNNotificationResponse) async {
-        guard let address = response.notification.request.content.userInfo["watchURL"] as? String, AnivibePageParser.canonicalURL(address) != nil, let url = URL(string:address) else { return }
-        await UIApplication.shared.open(url)
     }
 }

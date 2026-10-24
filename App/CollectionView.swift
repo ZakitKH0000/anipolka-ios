@@ -2,6 +2,12 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject var store: ShelfStore
+    @EnvironmentObject var network: NetworkService
+    @EnvironmentObject var assistant: ShelfAssistant
+    @State private var opened: OpenedEntry?
+    private var pendingLink: Binding<OpenedLink?> {
+        Binding(get:{ store.pendingLink.map(OpenedLink.init) },set:{ if $0 == nil { store.pendingLink = nil } })
+    }
     var body: some View {
         TabView {
             ShelfView(favorites: false).tabItem { Label("Коллекция",systemImage:"square.stack.fill") }
@@ -20,6 +26,17 @@ struct RootView: View {
                 }.padding(.horizontal,18).shelfGlass(in:RoundedRectangle(cornerRadius:22)).padding(.horizontal).padding(.bottom,6)
             }
         }
+        // Widgets open a title through anipolka://entry/<id>.
+        .onOpenURL { url in
+            guard url.scheme == "anipolka", url.host == "entry", let id = UUID(uuidString:url.lastPathComponent),
+                  store.snapshot.entries.contains(where:{$0.id == id}) else { return }
+            opened = OpenedEntry(id:id)
+        }
+        .sheet(item:$opened) { item in
+            NavigationStack { EntryDetail(id:item.id).toolbar { ToolbarItem(placement:.cancellationAction) { Button("Готово") { opened = nil } } } }
+                .environmentObject(store).environmentObject(network).environmentObject(assistant)
+        }
+        .sheet(item:pendingLink) { link in LinkInboxView(url:link.url).environmentObject(store).environmentObject(network).environmentObject(assistant) }
         .alert("Не удалось выполнить действие",isPresented: Binding(get:{store.error != nil},set:{if !$0 { store.error = nil }})) { Button("Понятно",role:.cancel) { store.error = nil } } message: { Text(store.error ?? "") }
     }
 }
@@ -29,11 +46,15 @@ struct ShelfView: View {
     @EnvironmentObject var store: ShelfStore
     @State private var query = ""
     @State private var status: WatchStatus? = nil
+    @State private var tag: String? = nil
+    @State private var behind = false
+    @State private var dub: String? = nil
     @State private var showAdd = false
     @State private var showReorder = false
     @State private var showImport = false
+    @State private var showSuggestion = false
     @Environment(\.dynamicTypeSize) private var typeSize
-    private var entries: [Entry] { store.snapshot.visible(query:query,status:status,favorites:favorites) }
+    private var entries: [Entry] { store.snapshot.visible(query:query,status:status,favorites:favorites,tag:tag,behindOnly:behind,dub:dub) }
     private var continuing: Entry? { entries.first { $0.status == .watching } }
     var body: some View {
         NavigationStack {
@@ -55,11 +76,15 @@ struct ShelfView: View {
                         Menu {
                             Picker("Сортировка",selection:store.preference(\.sort)) { ForEach(ShelfSort.allCases,id:\.self) { Text($0.rawValue).tag($0) } }
                             Picker("Вид коллекции",selection:store.preference(\.layout)) { ForEach(Layout.allCases,id:\.self) { Text($0.rawValue).tag($0) } }
+                            Toggle("Полки по статусам",isOn:store.preference(\.shelves))
                             Button("Изменить порядок",systemImage:"line.3.horizontal") { showReorder = true }
                             Button("Импорт текстового списка",systemImage:"text.badge.plus") { showImport = true }
+                            Button("Что посмотреть?",systemImage:"dice") { showSuggestion = true }
+                            ShareLink(item:ShelfExport.text(entries),subject:Text("Мой список АниПолки")) { Label("Поделиться списком текстом",systemImage:"square.and.arrow.up") }
                         } label: { Image(systemName:"slider.horizontal.3").frame(width:44,height:44) }.accessibilityLabel("Вид и сортировка")
                     }
                     if entries.isEmpty { emptyState }
+                    else if store.snapshot.preferences.shelves && !favorites && query.isEmpty && status == nil && tag == nil && !behind && dub == nil { ShelvesView(entries:entries) }
                     else if store.snapshot.preferences.layout == .grid && !typeSize.isAccessibilitySize {
                         LazyVGrid(columns:[GridItem(.flexible(),spacing:14),GridItem(.flexible(),spacing:14)],alignment:.leading,spacing:24) {
                             ForEach(entries) { entry in GridCard(entry:entry) }
@@ -84,28 +109,34 @@ struct ShelfView: View {
             .sheet(isPresented:$showAdd) { NavigationStack { SearchView { _ in showAdd = false } }.environmentObject(store) }
             .sheet(isPresented:$showReorder) { ReorderView() }
             .sheet(isPresented:$showImport) { TextImportView() }
+            .sheet(isPresented:$showSuggestion) { SuggestionView() }
         }
     }
     private var filters: some View {
         ScrollView(.horizontal,showsIndicators:false) {
             HStack(spacing:8) {
-                filterButton("Все",value:nil)
-                ForEach(WatchStatus.allCases) { filterButton($0.rawValue,value:$0) }
+                chip("Все",selected:status == nil && tag == nil && !behind && dub == nil) { status = nil; tag = nil; behind = false; dub = nil }
+                ForEach(WatchStatus.allCases) { value in chip(value.rawValue,selected:status == value) { status = value } }
+                if behind || store.snapshot.entries.contains(where:{ Backlog.available($0) != nil }) {
+                    chip("Есть новые серии",selected:behind) { behind.toggle() }.accessibilityIdentifier("filter-behind")
+                }
+                ForEach(Tags.all(store.snapshot.entries),id:\.self) { value in chip("#\(value)",selected:tag == value) { tag = tag == value ? nil : value } }
+                ForEach(Dubs.inUse(store.snapshot.entries,favorites:store.snapshot.preferences.favoriteDubs),id:\.self) { value in chip("🎙 \(value)",selected:dub == value) { dub = dub == value ? nil : value } }
             }.padding(.vertical,4)
         }
     }
-    private func filterButton(_ title: String,value: WatchStatus?) -> some View {
-        Button { status = value } label: {
-            Text(title).font(.subheadline.weight(status == value ? .semibold : .regular)).padding(.horizontal,15).frame(minHeight:44)
-                .background(status == value ? Color.blue.opacity(0.18) : Color.secondary.opacity(0.07),in:Capsule())
-                .foregroundStyle(status == value ? Color.blue : Color.primary)
-                .overlay(Capsule().stroke(status == value ? Color.blue.opacity(0.5) : .clear))
-        }.buttonStyle(.plain).accessibilityAddTraits(status == value ? [.isSelected] : [])
+    private func chip(_ title: String,selected: Bool,action: @escaping () -> Void) -> some View {
+        Button(action:action) {
+            Text(title).font(.subheadline.weight(selected ? .semibold : .regular)).padding(.horizontal,15).frame(minHeight:44)
+                .background(selected ? Color.blue.opacity(0.18) : Color.secondary.opacity(0.07),in:Capsule())
+                .foregroundStyle(selected ? Color.blue : Color.primary)
+                .overlay(Capsule().stroke(selected ? Color.blue.opacity(0.5) : .clear))
+        }.buttonStyle(.plain).accessibilityAddTraits(selected ? [.isSelected] : [])
     }
     private var emptyState: some View {
         VStack(spacing:16) {
             Image(systemName:favorites ? "star" : "books.vertical").font(.system(size:48,weight:.light)).foregroundStyle(.blue)
-            Text(query.isEmpty && status == nil ? (favorites ? "Здесь будут любимые истории" : "Ваша полка ждёт первую историю") : "Ничего не найдено").font(.title3.bold()).multilineTextAlignment(.center)
+            Text(query.isEmpty && status == nil && tag == nil && !behind && dub == nil ? (favorites ? "Здесь будут любимые истории" : "Ваша полка ждёт первую историю") : "Ничего не найдено").font(.title3.bold()).multilineTextAlignment(.center)
             Text(favorites ? "Отметьте произведение звёздочкой в его карточке." : "Найдите произведение с обложкой или перенесите свой текстовый список.").foregroundStyle(.secondary).multilineTextAlignment(.center)
             if !favorites {
                 Button("Найти произведение",systemImage:"magnifyingglass") { showAdd = true }.buttonStyle(.borderedProminent).controlSize(.large)
@@ -130,7 +161,8 @@ struct HeroCard: View {
                 NavigationLink { EntryDetail(id:entry.id) } label: {
                     VStack(alignment:.leading,spacing:6) {
                         Text(entry.displayTitle).font(.title3.bold()).foregroundStyle(.primary).fixedSize(horizontal:false,vertical:true)
-                        Text(entry.subtitle).font(.subheadline).foregroundStyle(.secondary)
+                        Text(entry.subtitle).font(.subheadline).foregroundStyle(.secondary).contentTransition(.numericText(value:Double(entry.episode))).animation(.snappy,value:entry.episode)
+                        EntryBadges(entry:entry)
                     }.frame(maxWidth:.infinity,alignment:.leading)
                 }.buttonStyle(.plain)
                 IncrementButton(entry:entry)
@@ -148,8 +180,9 @@ struct ShelfRow: View {
                     CoverView(data:entry.coverData,url:entry.coverURL,entryID:entry.id).frame(width:76,height:100).clipShape(RoundedRectangle(cornerRadius:13))
                     VStack(alignment:.leading,spacing:7) {
                         Text(entry.displayTitle).font(.headline).foregroundStyle(.primary).fixedSize(horizontal:false,vertical:true)
-                        Text(entry.subtitle).font(.subheadline).foregroundStyle(.secondary)
+                        Text(entry.subtitle).font(.subheadline).foregroundStyle(.secondary).contentTransition(.numericText(value:Double(entry.episode))).animation(.snappy,value:entry.episode)
                         if entry.status != .watching { Text(entry.status.rawValue).font(.caption).foregroundStyle(.blue) }
+                        EntryBadges(entry:entry)
                     }.frame(maxWidth:.infinity,alignment:.leading)
                 }
             }.buttonStyle(.plain)
@@ -165,9 +198,10 @@ struct GridCard: View {
                 VStack(alignment:.leading,spacing:10) {
                     CoverView(data:entry.coverData,url:entry.coverURL,entryID:entry.id).frame(height:220).clipShape(RoundedRectangle(cornerRadius:18))
                     Text(entry.displayTitle).font(.headline).foregroundStyle(.primary).fixedSize(horizontal:false,vertical:true)
+                    EntryBadges(entry:entry)
                 }
             }.buttonStyle(.plain)
-            HStack { Text("Серия \(entry.episode)").font(.subheadline).foregroundStyle(.secondary); Spacer(minLength:2); IncrementButton(entry:entry) }
+            HStack { Text("Серия \(entry.episode)").font(.subheadline).foregroundStyle(.secondary).contentTransition(.numericText(value:Double(entry.episode))).animation(.snappy,value:entry.episode); Spacer(minLength:2); IncrementButton(entry:entry) }
         }
     }
 }

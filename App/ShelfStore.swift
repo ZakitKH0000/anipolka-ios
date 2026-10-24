@@ -2,25 +2,36 @@ import SwiftUI
 import UIKit
 
 @MainActor final class ShelfStore: ObservableObject {
+    /// The single store shared by the interface, notification actions and Shortcuts.
+    static let shared = ShelfStore()
     @Published private(set) var snapshot = Snapshot()
     @Published var error: String?
     @Published private(set) var loadFailure: String?
     @Published private(set) var undoToken: EpisodeUndo?
+    /// A link handed over by Shortcuts, waiting for the user to attach it to a title.
+    @Published var pendingLink: URL?
     private var repository: ShelfRepository?
     private let fileURL: URL
     private var undoTask: Task<Void, Never>?
     let demo: Bool
-    init() {
+    private init() {
         demo = ProcessInfo.processInfo.arguments.contains("--demo")
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         fileURL = base.appendingPathComponent(demo ? "AniPolka-preview/shelf.json" : "AniPolka/shelf.json")
         do { repository = try ShelfRepository(url: fileURL); snapshot = repository!.snapshot }
         catch { loadFailure = "Локальный файл не удалось прочитать. Он сохранён без изменений. Восстановите резервную копию в настройках.\n\(error.localizedDescription)" }
+        var repaired = snapshot
+        if repaired.removePlaceholderCovers() {
+            do { try repository?.commit(repaired); snapshot = repaired }
+            catch { self.error = "Не удалось удалить заглушку обложки: \(error.localizedDescription)" }
+        }
         if demo && ProcessInfo.processInfo.arguments.contains("--reset") {
             var preview = Snapshot()
             let titles = ["Хроники далёких созвездий", "Путь за облаками", "Легенда о красном драконе", "Странник между мирами", "Очень длинное название истории о путешествии к краю бесконечной вселенной", "Последний хранитель"]
             for (i, title) in titles.enumerated() {
                 var e = Entry(title: title, episode: [24,26,20,11,150,48][i]); e.favorite = i == 0
+                if i == 0 { e.releaseDays = [ReleasePlanner.weekday(of: Date())]; e.rating = 5; e.tags = ["дунхуа"] }
+                if i == 2 { e.rating = 4; e.tags = ["дунхуа", "пересмотреть"] }
                 e.coverData = DemoArt.cover(index: i); e.watchedAt = Date().addingTimeInterval(Double(-i * 3600)); preview.entries.append(e)
             }
             let source = ReleaseSubscription(pageURL:"https://anivibe.pro/anime/44218",optionID:"kodik-910-1",label:"Тестовая озвучка · сезон 1 · Kodik",episode:26)
@@ -31,39 +42,42 @@ import UIKit
             }
             try? repository?.commit(preview); snapshot = preview
         }
+        integrations()
     }
     @discardableResult func change(_ block: (inout Snapshot) -> Void) -> Bool {
         guard let repository else { error = loadFailure; return false }
         var next = snapshot; block(&next)
-        do { try repository.commit(next); snapshot = repository.snapshot; return true }
+        do { try repository.commit(next); snapshot = repository.snapshot; integrations(); return true }
         catch { self.error = "Не удалось сохранить: \(error.localizedDescription)"; return false }
     }
     @discardableResult func save(_ entry: Entry) -> Bool {
-        change { state in
-            if let i = state.entries.firstIndex(where: { $0.id == entry.id }) { state.entries[i] = entry }
-            else { state.entries.append(entry) }
-        }
+        change { $0.save(entry) }
     }
-    func increment(_ entry: Entry) {
+    func increment(_ entry: Entry, by count: Int = 1) { increment(id: entry.id, by: count) }
+    /// Also used by the notification action and Shortcuts, so it reports the new progress.
+    @discardableResult func increment(id: UUID, by count: Int = 1) -> Entry? {
         do {
-            guard let repository, let token = try repository.increment(entry.id) else { return }
-            snapshot = repository.snapshot; undoToken = token
+            guard let repository, let token = try repository.increment(id, by: count) else { return nil }
+            snapshot = repository.snapshot; undoToken = token; integrations()
             if snapshot.preferences.haptics { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
             undoTask?.cancel(); undoTask = Task { try? await Task.sleep(for: .seconds(6)); if !Task.isCancelled { undoToken = nil } }
-        } catch { self.error = error.localizedDescription }
+            return token.applied
+        } catch { self.error = error.localizedDescription; return nil }
     }
     func undo() {
         guard let token = undoToken, let repository else { return }
-        do { try repository.undo(token); snapshot = repository.snapshot; undoToken = nil; undoTask?.cancel() }
+        do { try repository.undo(token); snapshot = repository.snapshot; undoToken = nil; undoTask?.cancel(); integrations() }
         catch { self.error = error.localizedDescription }
     }
     func cacheCover(id: UUID, url: String, data: Data) {
-        guard let i = snapshot.entries.firstIndex(where: { $0.id == id }), snapshot.entries[i].coverURL == url, snapshot.entries[i].coverData == nil else { return }
+        guard CoverImagePolicy.usableURL(url) != nil,
+              let i = snapshot.entries.firstIndex(where: { $0.id == id }), snapshot.entries[i].coverURL == url, snapshot.entries[i].coverData == nil else { return }
         _ = change { $0.entries[i].coverData = data }
     }
     func restore(_ backup: Snapshot, replacing: Bool) -> Bool {
         do {
-            let validated = try backup.validated()
+            var validated = try backup.validated()
+            validated.removePlaceholderCovers()
             if repository == nil {
                 guard replacing else { error = "Для повреждённой коллекции выберите восстановление с заменой."; return false }
                 // Keep the unreadable file for recovery before restoring a known-valid copy.
@@ -77,6 +91,14 @@ import UIKit
             let success = change { if replacing { $0 = validated } else { $0.merge(validated) } }
             if success { loadFailure = nil; undoToken = nil }; return success
         } catch { self.error = error.localizedDescription; return false }
+    }
+    /// Widget data and the daily reminder follow every saved change, including ones made
+    /// while the app runs in the background for a notification action or a shortcut.
+    private func integrations() {
+        guard !demo, loadFailure == nil else { return }
+        WidgetBridge.shared.publish(snapshot)
+        NotificationBridge.shared.scheduleDigest(snapshot)
+        NotificationBridge.shared.schedulePremieres(snapshot)
     }
     func preference<T>(_ path: WritableKeyPath<Preferences, T>) -> Binding<T> {
         Binding(get: { self.snapshot.preferences[keyPath: path] }, set: { value in _ = self.change { $0.preferences[keyPath: path] = value } })

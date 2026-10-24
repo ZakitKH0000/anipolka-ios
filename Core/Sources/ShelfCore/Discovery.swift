@@ -71,6 +71,8 @@ public struct SourcePage: Equatable {
     public var url: String
     public var coverURL: String?
     public var options: [SourceOption]
+    /// Every title the page gives for the work: Russian, English and alternative names.
+    public var names: [String] = []
     public func watchURL(for option: SourceOption, episode: Int) -> String {
         var components = URLComponents(string:url)!
         // Публичная страница поддерживает episode и translation. Видеопотоки не извлекаются.
@@ -125,7 +127,11 @@ public enum AnivibePageParser {
             }
         }
         guard !options.isEmpty else { throw ShelfError.invalid("На странице пока нет доступных данных о сериях для отслеживания.") }
-        return SourcePage(title:decodeEntities(title),url:canonical.absoluteString,coverURL:meta("og:image",in:html),options:options)
+        var names = [material["anime_title"],material["title"],material["title_en"],material["title_orig"]].compactMap { $0 as? String }
+        names += (material["other_titles"] as? [String] ?? []) + (material["other_titles_en"] as? [String] ?? [])
+        var page = SourcePage(title:decodeEntities(title),url:canonical.absoluteString,coverURL:meta("og:image",in:html),options:options)
+        page.names = Aliases.merge(nil,adding:names.map(decodeEntities),except:[])
+        return page
     }
     /// Извлекает один JSON-объект без выполнения JavaScript и без чтения закрытых API сайта.
     public static func jsonValue(in text: String, after marker: String) -> String? {

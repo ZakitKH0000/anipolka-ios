@@ -22,18 +22,25 @@ struct SettingsView: View {
     @State private var showReorder = false
     var body: some View {
         Form {
+            Section {
+                NavigationLink { StatsView() } label: { Label("Итоги просмотра",systemImage:"chart.bar") }.accessibilityIdentifier("open-stats")
+            }
             Section("Оформление") {
                 PreferencePicker(title:"Тема",choices:Theme.allCases,value:store.preference(\.theme),name:{$0.rawValue}).accessibilityIdentifier("theme")
                 PreferencePicker(title:"Вид коллекции",choices:Layout.allCases,value:store.preference(\.layout),name:{$0.rawValue})
                 PreferencePicker(title:"Сортировка",choices:ShelfSort.allCases,value:store.preference(\.sort),name:{$0.rawValue})
                 Button("Ручной порядок") { showReorder = true }
                 Toggle("Продолжить просмотр",isOn:store.preference(\.showContinue))
+                Toggle("Полки по статусам",isOn:store.preference(\.shelves))
+                Toggle("Чисто чёрный фон (OLED)",isOn:store.preference(\.pureBlack))
+                AppIconPicker()
             }
             Section {
                 Toggle("Тактильный отклик при +1",isOn:store.preference(\.haptics))
                 Toggle("Обложки только через Wi-Fi",isOn:store.preference(\.wifiOnly)).accessibilityIdentifier("wifi-only")
             } header: { Text("Отклик и сеть") } footer: { Text("Сохранённые обложки доступны офлайн. Ограничение Wi-Fi действует на все загружаемые изображения, в том числе результаты поиска. Поиск названий использует любую сеть.") }
             AutomationSettingsView()
+            PrivacySettingsSection()
             Section {
                 Button("Импорт текстового списка",systemImage:"text.badge.plus") { showTextImport = true }.accessibilityIdentifier("text-import")
                 Button("Сохранить копию в Файлы",systemImage:"square.and.arrow.up") { export() }.disabled(busy || store.loadFailure != nil)
@@ -42,7 +49,7 @@ struct SettingsView: View {
                 if let notice { Text(notice).font(.footnote).foregroundStyle(.secondary) }
             } header: { Text("Перенос и резервная копия") } footer: { Text("Копия содержит коллекцию, прогресс, порядок, настройки и уже сохранённые обложки. После выбора файла вы увидите предпросмотр восстановления. До подтверждения ничего не изменяется.") }
             Section("Об АниПолке") {
-                Label("АниПолка 1.1",systemImage:"books.vertical.fill")
+                Label("АниПолка 1.2",systemImage:"books.vertical.fill")
                 Text("Разработчик — Закир Халилов").font(.subheadline)
                 Text("Создано для личного использования.").font(.footnote).foregroundStyle(.secondary)
                 Link("Каталог и изображения: Shikimori",destination:URL(string:"https://shikimori.io")!)
@@ -168,7 +175,7 @@ struct TextImportView: View {
     }
     private var review: some View {
         List {
-            Section { Text("Проверьте названия и номера. Нераспознанные строки сохраняют исходное название с серией 0. Совпадающие с коллекцией названия по умолчанию не выбраны.").font(.subheadline).foregroundStyle(.secondary) }
+            Section { Text("Проверьте названия и номера. Нераспознанные строки сохраняют исходное название с серией 0. Истории, которые уже есть в коллекции под этим или другим известным названием, по умолчанию не выбраны.").font(.subheadline).foregroundStyle(.secondary) }
             ForEach($rows) { $row in
                 Section {
                     Toggle("Добавить запись",isOn:$row.included)
@@ -176,6 +183,7 @@ struct TextImportView: View {
                     HStack { Text("Последняя серия"); Spacer(); TextField("0",value:$row.episode,format:.number.grouping(.never)).keyboardType(.numberPad).multilineTextAlignment(.trailing) }
                     Toggle("Избранное",isOn:$row.favorite)
                     if !row.recognized { Label("Номер не распознан — проверьте",systemImage:"exclamationmark.triangle").font(.caption).foregroundStyle(.orange) }
+                    if let existing = row.duplicateOf { Label("Уже есть в коллекции: «\(existing)»",systemImage:"rectangle.on.rectangle").font(.caption).foregroundStyle(.blue) }
                     Text("Исходная строка: \(row.original)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 }
             }
@@ -186,8 +194,10 @@ struct TextImportView: View {
         guard text.utf8.count <= 1_000_000 else { message = "Список больше 1 МБ."; return }
         rows = TextListParser.parse(text)
         guard rows.count <= 2000 else { message = "За один раз можно перенести не более 2000 записей."; return }
-        let names = Set(store.snapshot.entries.map { $0.title.lowercased() })
-        for i in rows.indices { if names.contains(rows[i].title.lowercased()) { rows[i].included = false } }
+        // Any known name counts: «Swallowed Star 30» is the same work as «Пожиратель звёзд».
+        for i in rows.indices {
+            if let match = TitleMatcher.existing(rows[i].title,in:store.snapshot.entries) { rows[i].duplicateOf = match.title; rows[i].included = false }
+        }
         reviewing = true
     }
     private func apply() {

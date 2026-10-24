@@ -4,26 +4,6 @@ import Network
 import UIKit
 import ImageIO
 
-enum AnimeCatalog: String, Codable, CaseIterable { case shikimori = "Shikimori", kitsu = "Kitsu" }
-struct AnimeCandidate: Decodable, Identifiable {
-    struct Poster: Decodable { let original: String; let preview: String }
-    let id: Int
-    let name: String
-    let russian: String?
-    let image: Poster
-    let url: String
-    let kind: String?
-    let episodes: Int?
-    let aired_on: String?
-    var catalog: AnimeCatalog? = nil
-    var shikimoriID: Int? { catalog == .kitsu ? nil : id }
-    var title: String { russian.flatMap { $0.isEmpty ? nil : $0 } ?? name }
-    var posterURL: String { absolute(image.original) }
-    var previewURL: String { absolute(image.preview) }
-    var pageURL: String { absolute(url) }
-    var detail: String { [name, aired_on.map { String($0.prefix(4)) }, kind?.uppercased(), episodes.flatMap { $0 > 0 ? "\($0) серий в каталоге" : nil }].compactMap { $0 }.joined(separator: " · ") }
-    func absolute(_ path: String) -> String { URL(string: path, relativeTo: URL(string: "https://shikimori.io")!)?.absoluteURL.absoluteString ?? "" }
-}
 @MainActor final class NetworkService: ObservableObject {
     @Published var connected = false
     @Published var wifi = false
@@ -31,7 +11,7 @@ struct AnimeCandidate: Decodable, Identifiable {
     private let monitor = NWPathMonitor()
     private var imageSession = NetworkService.makeSession(wifiOnly: false)
     private var nextRequest = Date.distantPast
-    private var cooldown = Date.distantPast
+    private var cooldowns: [String:Date] = [:]
     private var nextSourceRequest = Date.distantPast
     var canLoadCovers: Bool { CoverPolicy.permits(wifiOnly: wifiOnly, connected: connected, wifi: wifi) }
     var revision: String { "\(connected)-\(wifi)-\(wifiOnly)" }
@@ -52,26 +32,45 @@ struct AnimeCandidate: Decodable, Identifiable {
         config.urlCache = nil
         return URLSession(configuration: config)
     }
-    private func metadata(_ url: URL) async throws -> Data {
-        guard Date() >= cooldown else { throw ShelfError.invalid("Каталог просит подождать. Повторите поиск через минуту.") }
+    private func metadata(_ url: URL, body: Data? = nil) async throws -> Data {
+        let host = url.host ?? ""
+        guard Date() >= (cooldowns[host] ?? .distantPast) else { throw ShelfError.invalid("Каталог просит подождать. Повторите поиск через минуту.") }
         let wait = max(0, nextRequest.timeIntervalSinceNow)
         nextRequest = Date().addingTimeInterval(wait + 1.0)
         if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
         try Task.checkCancellation()
         var request = URLRequest(url: url); request.timeoutInterval = 20
         request.setValue("AniPolka/1.1 (personal iOS collection)", forHTTPHeaderField: "User-Agent")
+        if let body { request.httpMethod = "POST"; request.httpBody = body; request.setValue("application/json",forHTTPHeaderField:"Content-Type") }
         if url.host == "kitsu.io" { request.setValue("application/vnd.api+json",forHTTPHeaderField:"Accept") }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
-        if http.statusCode == 429 { cooldown = Date().addingTimeInterval(Double(http.value(forHTTPHeaderField: "Retry-After") ?? "60") ?? 60); throw ShelfError.invalid("Слишком много запросов. Повторите через минуту.") }
+        if http.statusCode == 429 { cooldowns[host] = Date().addingTimeInterval(Double(http.value(forHTTPHeaderField: "Retry-After") ?? "60") ?? 60); throw ShelfError.invalid("Слишком много запросов. Повторите через минуту.") }
         guard http.statusCode == 200 else { throw ShelfError.invalid("Каталог недоступен (\(http.statusCode)). Можно добавить запись вручную.") }
         return data
     }
     func search(_ text: String, catalog: AnimeCatalog = .shikimori) async throws -> [AnimeCandidate] {
         if catalog == .kitsu { return try await searchKitsu(text) }
+        do { return try await shikimoriGraphQL(filter:"search: $value",value:text) }
+        catch { if error is CancellationError || Task.isCancelled { throw CancellationError() } }
+        // Legacy REST remains useful for title identity, but its missing-image URLs
+        // are filtered by AnimeCandidate and never passed off as actual posters.
         var components = URLComponents(string: "https://shikimori.io/api/animes")!
         components.queryItems = [URLQueryItem(name: "search", value: text), .init(name:"limit",value:"30"), .init(name:"censored",value:"true")]
         return try JSONDecoder().decode([AnimeCandidate].self, from: await metadata(components.url!))
+    }
+    private func shikimoriGraphQL(filter: String,value: String) async throws -> [AnimeCandidate] {
+        let query = "query($value: String!) { animes(\(filter), limit: 30, censored: true) { id name russian english japanese synonyms url kind episodes airedOn { year month day } poster { originalUrl mainUrl } } }"
+        let body = try JSONSerialization.data(withJSONObject:["query":query,"variables":["value":value]])
+        let data = try await metadata(URL(string:"https://shikimori.io/api/graphql")!,body:body)
+        return try JSONDecoder().decode(ShikimoriGraphQLResponse.self,from:data).candidates()
+    }
+    func shikimoriCandidate(id: Int) async throws -> AnimeCandidate? {
+        do { return try await shikimoriGraphQL(filter:"ids: $value",value:String(id)).first { $0.id == id } }
+        catch { if error is CancellationError || Task.isCancelled { throw CancellationError() } }
+        let data = try await metadata(URL(string:"https://shikimori.io/api/animes/\(id)")!)
+        let candidate = try JSONDecoder().decode(AnimeCandidate.self,from:data)
+        return candidate.id == id ? candidate : nil
     }
     private func searchKitsu(_ text: String) async throws -> [AnimeCandidate] {
         struct Response: Decodable {
@@ -90,15 +89,29 @@ struct AnimeCandidate: Decodable, Identifiable {
         let response = try JSONDecoder().decode(Response.self,from:await metadata(components.url!))
         return response.data.compactMap { item in
             guard let id = Int(item.id) else { return nil }; let a = item.attributes
-            let poster = a.posterImage?.large ?? a.posterImage?.original ?? ""
+            let poster = [a.posterImage?.large,a.posterImage?.original,a.posterImage?.small].compactMap { $0 }.first { CoverImagePolicy.usableURL($0) != nil } ?? ""
             let russian = a.titles["ru_ru"].flatMap { $0 } ?? a.titles["ru"].flatMap { $0 }
-            return AnimeCandidate(id:id,name:a.canonicalTitle,russian:russian,image:.init(original:poster,preview:a.posterImage?.small ?? poster),url:"https://kitsu.app/anime/\(a.slug)",kind:a.subtype,episodes:a.episodeCount,aired_on:a.startDate,catalog:.kitsu)
+            return AnimeCandidate(id:id,name:a.canonicalTitle,russian:russian,image:.init(original:poster,preview:a.posterImage?.small ?? poster),url:"https://kitsu.app/anime/\(a.slug)",kind:a.subtype,episodes:a.episodeCount,aired_on:a.startDate,catalog:.kitsu,aliases:a.titles.values.compactMap { $0 })
         }
     }
-    func automaticCoverCandidates(_ text: String) async throws -> [AnimeCandidate] {
-        do { let primary = try await search(text); if !primary.isEmpty { return primary } }
-        catch { if Task.isCancelled { throw CancellationError() } }
-        return try await search(text,catalog:.kitsu)
+    func automaticCover(_ entry: Entry) async throws -> CoverResolution {
+        try await AutomaticCoverLookup.resolve(entry:entry,
+            search:{ text,catalog in try await self.search(text,catalog:catalog) },
+            lookup:{ id in try await self.shikimoriCandidate(id:id) },
+            download:{ address in try await self.image(address) })
+    }
+    /// Public sitemap files of AniVibe; the site's search is closed to automated requests by robots.txt.
+    func anivibeSitemap(_ url: URL) async throws -> String {
+        guard url.scheme == "https", url.host == "anivibe.pro", url.path.hasSuffix(".xml") else { throw URLError(.badURL) }
+        let delay = max(0,nextSourceRequest.timeIntervalSinceNow)
+        nextSourceRequest = Date().addingTimeInterval(delay + 1.2)
+        if delay > 0 { try await Task.sleep(for:.seconds(delay)) }
+        var request = URLRequest(url:url); request.timeoutInterval = 30
+        request.setValue("AniPolka/1.2 (personal episode tracker)",forHTTPHeaderField:"User-Agent")
+        let (data,response) = try await URLSession.shared.data(for:request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200, http.url?.host == "anivibe.pro", data.count <= 30_000_000,
+              let xml = String(data:data,encoding:.utf8) else { throw ShelfError.invalid("Список страниц AniVibe сейчас недоступен. Вставьте ссылку вручную.") }
+        return xml
     }
     func sourcePage(_ url: URL) async throws -> String {
         let delay = max(0,nextSourceRequest.timeIntervalSinceNow)
@@ -121,11 +134,12 @@ struct AnimeCandidate: Decodable, Identifiable {
     }
     func image(_ address: String) async throws -> Data {
         guard canLoadCovers else { throw ShelfError.invalid("Загрузка обложек ожидает Wi-Fi или подключения к сети.") }
-        guard let url = URL(string: address), url.scheme == "https" else { throw URLError(.badURL) }
+        guard let url = CoverImagePolicy.usableURL(address) else { throw URLError(.badURL) }
         var request = URLRequest(url: url); request.allowsCellularAccess = !wifiOnly
         request.setValue("AniPolka/1.0", forHTTPHeaderField: "User-Agent")
         let (bytes, response) = try await imageSession.bytes(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        guard let http = response as? HTTPURLResponse,
+              CoverImagePolicy.acceptsResponse(status:http.statusCode,mimeType:http.mimeType,url:http.url?.absoluteString ?? "") else { throw URLError(.badServerResponse) }
         var data = Data()
         // Bound streamed downloads before decoding image data.
         for try await byte in bytes { if data.count >= 12_000_000 { throw ShelfError.invalid("Изображение слишком большое.") }; data.append(byte) }
@@ -151,7 +165,7 @@ struct CoverView: View {
         GeometryReader { geo in
             ZStack {
                 LinearGradient(colors: [.blue.opacity(0.3), .indigo.opacity(0.18)], startPoint:.topLeading, endPoint:.bottomTrailing)
-                if let bytes = data ?? downloaded, let uiImage = UIImage(data: bytes) {
+                if !CoverImagePolicy.isPlaceholder(url), let bytes = data ?? downloaded, let uiImage = UIImage(data: bytes) {
                     Image(uiImage: uiImage).resizable().scaledToFill().frame(width:geo.size.width,height:geo.size.height).clipped()
                 } else {
                     Image(systemName: "sparkles.tv").font(.system(size:32,weight:.light)).foregroundStyle(.secondary)
@@ -161,7 +175,7 @@ struct CoverView: View {
         .clipped().accessibilityHidden(true)
         .task(id: url + network.revision) {
             downloaded = nil
-            guard data == nil, !url.isEmpty, network.canLoadCovers else { return }
+            guard data == nil, CoverImagePolicy.usableURL(url) != nil, network.canLoadCovers else { return }
             if let result = try? await network.image(url), !Task.isCancelled {
                 downloaded = result
                 if let id = entryID { store.cacheCover(id:id,url:url,data:result) }
