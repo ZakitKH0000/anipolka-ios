@@ -24,14 +24,15 @@ struct SettingsView: View {
         Form {
             Section {
                 NavigationLink { StatsView() } label: { Label("Итоги просмотра",systemImage:"chart.bar") }.accessibilityIdentifier("open-stats")
-            }
+                NavigationLink { ReportView() } label: { Label("Текст для копирования",systemImage:"doc.plaintext") }.accessibilityIdentifier("open-report")
+            } footer: { Text("Список историй, серии и итоги обычным текстом: для заметок, друга или ИИ-ассистента.") }
             Section("Оформление") {
                 PreferencePicker(title:"Тема",choices:Theme.allCases,value:store.preference(\.theme),name:{$0.rawValue}).accessibilityIdentifier("theme")
                 PreferencePicker(title:"Вид коллекции",choices:Layout.allCases,value:store.preference(\.layout),name:{$0.rawValue})
                 PreferencePicker(title:"Сортировка",choices:ShelfSort.allCases,value:store.preference(\.sort),name:{$0.rawValue})
                 Button("Ручной порядок") { showReorder = true }
                 Toggle("Продолжить просмотр",isOn:store.preference(\.showContinue))
-                Toggle("Полки по статусам",isOn:store.preference(\.shelves))
+                Toggle("Группы по статусам",isOn:store.preference(\.shelves))
                 Toggle("Чисто чёрный фон (OLED)",isOn:store.preference(\.pureBlack))
                 AppIconPicker()
             }
@@ -49,7 +50,7 @@ struct SettingsView: View {
                 if let notice { Text(notice).font(.footnote).foregroundStyle(.secondary) }
             } header: { Text("Перенос и резервная копия") } footer: { Text("Копия содержит коллекцию, прогресс, порядок, настройки и уже сохранённые обложки. После выбора файла вы увидите предпросмотр восстановления. До подтверждения ничего не изменяется.") }
             Section("Об АниПолке") {
-                Label("АниПолка 1.2",systemImage:"books.vertical.fill")
+                Label("АниПолка \(Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "")",systemImage:"books.vertical.fill")
                 Text("Разработчик — Закир Халилов").font(.subheadline)
                 Text("Создано для личного использования.").font(.footnote).foregroundStyle(.secondary)
                 Link("Каталог и изображения: Shikimori",destination:URL(string:"https://shikimori.io")!)

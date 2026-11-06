@@ -192,24 +192,6 @@ struct LinkEditor: View {
     }
 }
 
-struct ShelvesView: View {
-    let entries: [Entry]
-    var body: some View {
-        VStack(alignment:.leading,spacing:26) {
-            ForEach(ShelfSections.make(entries)) { section in
-                VStack(alignment:.leading,spacing:12) {
-                    HStack(alignment:.firstTextBaseline) { Text(section.title).font(.title3.bold()); Text("\(section.entries.count)").foregroundStyle(.secondary) }
-                    ScrollView(.horizontal,showsIndicators:false) {
-                        LazyHStack(alignment:.top,spacing:14) {
-                            ForEach(section.entries) { entry in GridCard(entry:entry).frame(width:150) }
-                        }
-                    }.accessibilityIdentifier("shelf-\(section.title)")
-                }
-            }
-        }
-    }
-}
-
 struct YearCardView: View {
     let summary: YearSummary
     let covers: [Data]
@@ -247,14 +229,16 @@ struct YearCardSection: View {
         let card = YearCardView(summary:summary,covers:covers)
         Section {
             card.frame(maxWidth:.infinity).clipShape(RoundedRectangle(cornerRadius:20)).listRowInsets(EdgeInsets()).listRowBackground(Color.clear)
-            if let image = render(card) {
-                ShareLink(item:image,preview:SharePreview("АниПолка \(String(year))",image:image)) { Label("Поделиться карточкой",systemImage:"square.and.arrow.up") }
-            }
+            // The picture is rendered only when asked for, not on every redraw of the screen.
+            Button { share(card,year:year) } label: { Label("Поделиться карточкой",systemImage:"square.and.arrow.up") }.accessibilityIdentifier("share-year-card")
         } header: { Text("Итоги года") }
     }
-    @MainActor private func render(_ card: YearCardView) -> Image? {
+    @MainActor private func share(_ card: YearCardView,year: Int) {
         let renderer = ImageRenderer(content:card); renderer.scale = 3
-        return renderer.uiImage.map { Image(uiImage:$0) }
+        guard let image = renderer.uiImage,
+              var top = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first?.rootViewController else { return }
+        while let presented = top.presentedViewController { top = presented }
+        top.present(UIActivityViewController(activityItems:[image],applicationActivities:nil),animated:true)
     }
 }
 

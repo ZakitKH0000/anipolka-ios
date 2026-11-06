@@ -78,15 +78,7 @@ import UserNotifications
     func connect(page: SourcePage,option: SourceOption,entryID: UUID) -> Bool {
         store.change { state in
             guard let i = state.entries.firstIndex(where:{$0.id == entryID}) else { return }
-            var sources = state.entries[i].subscriptions ?? []
-            guard !sources.contains(where:{$0.pageURL == page.url && $0.optionID == option.id}) else { return }
-            sources.append(ReleaseSubscription(pageURL:page.url,optionID:option.id,label:option.label,episode:option.episode))
-            state.entries[i].subscriptions = sources
-            state.entries[i].learnNames(page.names)
-            if state.entries[i].watchURL.isEmpty { state.entries[i].watchURL = page.watchURL(for:option,episode:option.episode) }
-            if state.entries[i].coverData == nil, state.entries[i].coverURL.isEmpty, state.entries[i].coverLookupDisabled != true, let cover = page.coverURL {
-                state.entries[i].coverURL = cover; state.entries[i].coverLookupDisabled = false
-            }
+            state.entries[i].attachSource(page:page,option:option)
         }
     }
     func checkReleases(background: Bool = false) async {

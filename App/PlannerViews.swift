@@ -96,6 +96,7 @@ struct StatsView: View {
                 ForEach(WatchStatus.allCases) { status in row(status.rawValue,"\(stats.byStatus[status] ?? 0)") }
                 row("Завершено в этом году","\(stats.completedThisYear)")
             }
+            Section { NavigationLink { ReportView() } label: { Label("Скопировать всё текстом",systemImage:"doc.on.doc") } }
             YearCardSection()
             Section("Оценки") {
                 row("Средняя оценка",stats.averageRating.map { "\($0.formatted(.number.precision(.fractionLength(1)))) ★" } ?? "пока нет")

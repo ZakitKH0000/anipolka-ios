@@ -147,3 +147,41 @@ extension Entry {
         aliases = merged.isEmpty ? nil : merged
     }
 }
+
+extension Entry {
+    /// Connects a source track to this entry: remembers the page's other names, offers the
+    /// page as the watch link and, when there is no cover yet, the page's picture.
+    /// Shared by the entry's source screen and the «add» wizard, which works on a draft.
+    @discardableResult public mutating func attachSource(page: SourcePage, option: SourceOption, now: Date = Date()) -> Bool {
+        var sources = subscriptions ?? []
+        guard sources.count < 20, !sources.contains(where: { $0.pageURL == page.url && $0.optionID == option.id }) else { return false }
+        sources.append(ReleaseSubscription(pageURL: page.url, optionID: option.id, label: option.label, episode: option.episode, now: now))
+        subscriptions = sources
+        learnNames(page.names)
+        if watchURL.isEmpty { watchURL = page.watchURL(for: option, episode: option.episode) }
+        if coverData == nil, coverURL.isEmpty, coverLookupDisabled != true, let cover = page.coverURL {
+            coverURL = cover; coverLookupDisabled = false
+        }
+        return true
+    }
+}
+
+extension Backlog {
+    /// Share of the source's latest episode already watched, for a progress bar.
+    /// Nil when the numbering does not line up, so a wrong bar is never drawn.
+    public static func progress(_ entry: Entry) -> Double? {
+        guard let latest = latest(entry), latest > 0, entry.episode <= latest, latest - entry.episode <= plausibleGap else { return nil }
+        return Double(entry.episode) / Double(latest)
+    }
+}
+
+public enum Greeting {
+    public static func text(at date: Date = Date(), calendar: Calendar = .current) -> String {
+        switch calendar.component(.hour, from: date) {
+        case 5..<12: return "Доброе утро"
+        case 12..<18: return "Добрый день"
+        case 18..<23: return "Добрый вечер"
+        default: return "Доброй ночи"
+        }
+    }
+}

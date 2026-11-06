@@ -109,6 +109,49 @@ final class ExtrasTests: XCTestCase {
         try r.undo(token); XCTAssertEqual(r.snapshot.entries[0].episode,24); XCTAssertEqual(r.snapshot.history?.count,0)
         XCTAssertNil(try r.increment(e.id,by:0))
     }
+    func testAttachSourceWorksOnADraftAndKeepsNamesCoverAndWatchLink() {
+        let option = SourceOption(id:"kodik-1-1",label:"ПВА ШОУ · сезон 1 · Kodik",episode:60,translationID:1,translationKey:"ПВА ШОУ")
+        var page = SourcePage(title:"Тестовая история",url:"https://anivibe.pro/anime/61929-ling-tian-du-zun",coverURL:"https://anivibe.pro/cover.jpg",options:[option])
+        page.names = ["Ling Tian Du Zun","Тестовая история"]
+        var draft = Entry(title:"Тестовая история")
+        XCTAssertTrue(draft.attachSource(page:page,option:option))
+        XCTAssertEqual(draft.subscriptions?.count,1); XCTAssertEqual(draft.subscriptions?.first?.lastEpisode,60)
+        XCTAssertEqual(draft.aliases,["Ling Tian Du Zun"]); XCTAssertEqual(draft.coverURL,"https://anivibe.pro/cover.jpg")
+        XCTAssertTrue(draft.watchURL.contains("episode=60")); XCTAssertTrue(draft.watchURL.contains("player-section"))
+        XCTAssertFalse(draft.attachSource(page:page,option:option), "The same track is connected once")
+        XCTAssertEqual(draft.subscriptions?.count,1)
+        var own = Entry(title:"Своя"); own.watchURL = "https://example.org/watch"; own.coverURL = "https://example.org/own.jpg"
+        own.attachSource(page:page,option:option)
+        XCTAssertEqual(own.watchURL,"https://example.org/watch"); XCTAssertEqual(own.coverURL,"https://example.org/own.jpg")
+        var disabled = Entry(title:"Без автообложки"); disabled.coverLookupDisabled = true
+        disabled.attachSource(page:page,option:option); XCTAssertEqual(disabled.coverURL,"")
+    }
+    func testProgressBarOnlyWhenNumberingLinesUp() {
+        func entry(_ own: Int,latest: Int) -> Entry {
+            var e = Entry(title:"История",episode:own)
+            e.subscriptions = [ReleaseSubscription(pageURL:"https://anivibe.pro/anime/1",optionID:"a",label:"x",episode:latest)]
+            return e
+        }
+        XCTAssertNil(Backlog.progress(Entry(title:"Без источника",episode:5)))
+        XCTAssertEqual(Backlog.progress(entry(12,latest:24)),0.5)
+        XCTAssertEqual(Backlog.progress(entry(24,latest:24)),1)
+        XCTAssertNil(Backlog.progress(entry(150,latest:105)), "A larger own number means different numbering")
+        XCTAssertNil(Backlog.progress(entry(10,latest:200)), "A huge gap usually means several seasons")
+    }
+    func testGreetingFollowsTimeOfDay() {
+        var calendar = Calendar(identifier:.gregorian); calendar.timeZone = TimeZone(identifier:"Europe/Kiev")!
+        func at(_ hour: Int) -> Date { calendar.date(from:DateComponents(year:2026,month:11,day:6,hour:hour))! }
+        XCTAssertEqual(Greeting.text(at:at(7),calendar:calendar),"Доброе утро")
+        XCTAssertEqual(Greeting.text(at:at(14),calendar:calendar),"Добрый день")
+        XCTAssertEqual(Greeting.text(at:at(21),calendar:calendar),"Добрый вечер")
+        XCTAssertEqual(Greeting.text(at:at(2),calendar:calendar),"Доброй ночи")
+    }
+    func testNewCollectionsStartAsGridAndSavedChoiceIsKept() throws {
+        XCTAssertEqual(Preferences().layout,.grid)
+        let saved = try JSONDecoder().decode(Preferences.self,from:Data(#"{"layout":"Компактный список"}"#.utf8))
+        XCTAssertEqual(saved.layout,.list)
+        XCTAssertEqual(try JSONDecoder().decode(Preferences.self,from:Data("{}".utf8)).layout,.grid)
+    }
     func testYearSummary() {
         var s = Snapshot()
         var a = Entry(title:"А"); a.rating = 5; a.status = .completed; a.completedAt = date(2026,5,1)

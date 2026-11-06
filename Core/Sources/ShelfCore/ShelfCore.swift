@@ -9,7 +9,7 @@ public enum Layout: String, Codable, CaseIterable { case list = "Компакт�
 public enum ShelfSort: String, Codable, CaseIterable { case recent = "По последнему просмотру", title = "По названию", manual = "Вручную" }
 public struct Preferences: Codable, Equatable {
     public var theme: Theme = .dark
-    public var layout: Layout = .list
+    public var layout: Layout = .grid
     public var sort: ShelfSort = .recent
     public var showContinue = true
     public var haptics = true
@@ -32,7 +32,7 @@ public struct Preferences: Codable, Equatable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy:CodingKeys.self)
         theme = try c.decodeIfPresent(Theme.self,forKey:.theme) ?? .dark
-        layout = try c.decodeIfPresent(Layout.self,forKey:.layout) ?? .list
+        layout = try c.decodeIfPresent(Layout.self,forKey:.layout) ?? .grid
         sort = try c.decodeIfPresent(ShelfSort.self,forKey:.sort) ?? .recent
         showContinue = try c.decodeIfPresent(Bool.self,forKey:.showContinue) ?? true
         haptics = try c.decodeIfPresent(Bool.self,forKey:.haptics) ?? true
