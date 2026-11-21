@@ -6,6 +6,7 @@ import UserNotifications
     static let refreshID = "com.zakitkh.anipolka.releases"
     @Published private(set) var checking = false
     @Published private(set) var findingCovers = false
+    @Published private(set) var refreshingAiring = false
     @Published var message: String?
     private let store: ShelfStore
     private let network: NetworkService
@@ -107,7 +108,9 @@ import UserNotifications
                     state.entries[i].subscriptions = updated.subscriptions
                     state.entries[i].releaseNotices = updated.releaseNotices
                 }
-                if committed, let found {
+                // An episode the user already marked as watched is filed as read and does not ring.
+                let unread = store.snapshot.entries.first(where:{$0.id == entryID})?.releaseNotices?.contains { $0.id == found?.id && !$0.read } == true
+                if committed, let found, unread {
                     newCount += 1
                     if store.snapshot.preferences.releaseNotifications { await NotificationBridge.shared.deliver(found,entryID:entryID) }
                 }
@@ -123,9 +126,23 @@ import UserNotifications
         }
         if !background { message = work.isEmpty ? "Выберите источник в карточке произведения." : "Проверено источников: \(min(work.count,60)). Новых выпусков: \(newCount)." + (errors > 0 ? " Недоступно: \(errors). Подробности — в карточках." : "") }
     }
+    /// Next-episode times, aired counts and continuations from Shikimori for titles whose data is stale.
+    func refreshAiring(force: Bool = false) async {
+        guard !refreshingAiring, !store.demo, store.loadFailure == nil, store.snapshot.preferences.catalogUpdates else { return }
+        refreshingAiring = true; defer { refreshingAiring = false }
+        let ids = Array(Set(store.snapshot.entries.filter { force || Airing.needsRefresh($0) }.filter { $0.status != .dropped }.compactMap(\.sourceID)))
+        var start = 0
+        while start < ids.count {
+            let chunk = Array(ids[start..<min(start + 50, ids.count)]); start += 50
+            guard let found = try? await network.airing(ids: chunk), !found.isEmpty else { continue }
+            _ = store.change { state in
+                for i in state.entries.indices { if let id = state.entries[i].sourceID, let info = found[id] { state.entries[i] = Airing.apply(state.entries[i], info) } }
+            }
+        }
+    }
     func scheduleBackground() {
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier:Self.refreshID)
-        guard !store.demo, store.snapshot.preferences.backgroundChecks, store.snapshot.entries.contains(where:{($0.subscriptions ?? []).contains(where:\.enabled)}) else { return }
+        guard !store.demo, store.snapshot.preferences.backgroundChecks, store.snapshot.entries.contains(where:{($0.subscriptions ?? []).contains(where:\.enabled) || $0.sourceID != nil}) else { return }
         let request = BGAppRefreshTaskRequest(identifier:Self.refreshID)
         request.earliestBeginDate = Date().addingTimeInterval(6*3600)
         try? BGTaskScheduler.shared.submit(request)

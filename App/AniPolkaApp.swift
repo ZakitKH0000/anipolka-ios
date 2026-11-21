@@ -23,7 +23,9 @@ import UserNotifications
                 // Also hides the collection in the app switcher while the lock is on.
                 .overlay { if store.snapshot.preferences.appLock && (lock.locked || phase != .active) { LockScreen(lock:lock) } }
                 .preferredColorScheme(store.snapshot.preferences.theme == .system ? nil : (store.snapshot.preferences.theme == .dark ? .dark : .light))
-                .onAppear { network.wifiOnly = store.snapshot.preferences.wifiOnly; assistant.queueCovers(); assistant.scheduleBackground(); if lock.locked { Task { await lock.authenticate() } } }
+                .onAppear { network.wifiOnly = store.snapshot.preferences.wifiOnly; assistant.queueCovers(); assistant.scheduleBackground(); if lock.locked { Task { await lock.authenticate() } }; Task { await assistant.refreshAiring() } }
+                .onChange(of: store.snapshot.entries.map(\.sourceID)) { _, _ in Task { await assistant.refreshAiring() } }
+                .onChange(of: store.snapshot.preferences.catalogUpdates) { _, value in if value { Task { await assistant.refreshAiring(force:true) } } }
                 .onChange(of: store.snapshot.preferences.wifiOnly) { _, value in network.wifiOnly = value }
                 .onChange(of: network.revision) { _, _ in assistant.queueCovers() }
                 .onChange(of: coverSignature) { _, _ in assistant.queueCovers() }
@@ -33,11 +35,12 @@ import UserNotifications
                     if value == .active {
                         if lock.locked && store.snapshot.preferences.appLock { Task { await lock.authenticate() } }
                         assistant.queueCovers()
+                        Task { await assistant.refreshAiring() }
                         let hasDue = store.snapshot.entries.contains { ($0.subscriptions ?? []).contains { $0.enabled && ($0.lastCheckedAt ?? .distantPast).timeIntervalSinceNow < -3600 } }
                         if hasDue { Task { await assistant.checkReleases(background:true) } }
                     }
                 }
         }
-        .backgroundTask(.appRefresh(ShelfAssistant.refreshID)) { await assistant.checkReleases(background:true) }
+        .backgroundTask(.appRefresh(ShelfAssistant.refreshID)) { await assistant.checkReleases(background:true); await assistant.refreshAiring() }
     }
 }

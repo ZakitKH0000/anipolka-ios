@@ -27,8 +27,12 @@ public struct Preferences: Codable, Equatable {
     /// Pure black background in the dark theme (OLED).
     public var pureBlack = false
     public var favoriteDubs: [String] = []
+    /// Next-episode times, aired counts and continuations from Shikimori (only catalogue IDs are sent).
+    public var catalogUpdates = true
+    /// A local notification at the announced broadcast time of the next episode.
+    public var airingReminders = false
     public init() {}
-    private enum CodingKeys: String, CodingKey { case theme, layout, sort, showContinue, haptics, wifiOnly, automaticCovers, releaseNotifications, backgroundChecks, dailyDigest, digestMinutes, appLock, shelves, pureBlack, favoriteDubs }
+    private enum CodingKeys: String, CodingKey { case theme, layout, sort, showContinue, haptics, wifiOnly, automaticCovers, releaseNotifications, backgroundChecks, dailyDigest, digestMinutes, appLock, shelves, pureBlack, favoriteDubs, catalogUpdates, airingReminders }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy:CodingKeys.self)
         theme = try c.decodeIfPresent(Theme.self,forKey:.theme) ?? .dark
@@ -46,6 +50,8 @@ public struct Preferences: Codable, Equatable {
         shelves = try c.decodeIfPresent(Bool.self,forKey:.shelves) ?? false
         pureBlack = try c.decodeIfPresent(Bool.self,forKey:.pureBlack) ?? false
         favoriteDubs = Array((try c.decodeIfPresent([String].self,forKey:.favoriteDubs) ?? []).filter { !$0.isEmpty && $0.count <= 80 }.prefix(Dubs.limit))
+        catalogUpdates = try c.decodeIfPresent(Bool.self,forKey:.catalogUpdates) ?? true
+        airingReminders = try c.decodeIfPresent(Bool.self,forKey:.airingReminders) ?? false
     }
 }
 public struct Entry: Codable, Identifiable, Equatable {
@@ -85,6 +91,10 @@ public struct Entry: Codable, Identifiable, Equatable {
     public var premiereDate: Date? = nil
     /// Other seasons, films or parts of the same story in the collection.
     public var relatedIDs: [UUID]? = nil
+    /// Broadcast data from Shikimori: aired episodes, next episode time, continuation.
+    public var airing: AiringInfo? = nil
+    /// Continuation the user chose not to add.
+    public var dismissedSequelID: Int? = nil
     public init(title: String, episode: Int = 0) { self.title = title; self.episode = episode }
     public var displayTitle: String { title + (favorite && !title.contains("⭐") && !title.contains("★") ? " ★" : "") }
     public var subtitle: String { (season.map { "Сезон \($0) · " } ?? "") + "Последняя серия: \(episode)" }
@@ -113,6 +123,11 @@ public struct Snapshot: Codable, Equatable {
                   (e.links?.count ?? 0) <= WatchLink.limit, (e.links ?? []).allSatisfy({ !$0.label.isEmpty && $0.label.count <= 100 && $0.url.count <= 4000 && ($0.url.lowercased().hasPrefix("https://") || $0.url.lowercased().hasPrefix("http://")) }),
                   e.rewatch == nil || (0...1000).contains(e.rewatch!), e.firstRunEpisode == nil || (0...1_000_000).contains(e.firstRunEpisode!),
                   (e.relatedIDs?.count ?? 0) <= Relations.limit else { throw ShelfError.invalid("Недопустимая оценка, расписание или метки записи «\(e.title.prefix(60))».") }
+            if let a = e.airing {
+                let okSequel = a.sequel.map { $0.title.count <= 500 && $0.originalTitle.count <= 500 && $0.coverURL.count <= 4000 && $0.status.count <= 20 && ($0.airedOn?.count ?? 0) <= 20 } ?? true
+                guard a.status.count <= 20, (a.episodes ?? 0) >= 0, (a.episodes ?? 0) <= 100_000, (a.episodesAired ?? 0) >= 0, (a.episodesAired ?? 0) <= 100_000, okSequel
+                else { throw ShelfError.invalid("Некорректные данные каталога в записи «\(e.title.prefix(60))».") }
+            }
             guard (e.subscriptions?.count ?? 0) <= 20, (e.releaseNotices?.count ?? 0) <= 100 else { throw ShelfError.invalid("Слишком много источников или уведомлений в записи.") }
             guard Set((e.subscriptions ?? []).map(\.id)).count == (e.subscriptions?.count ?? 0),
                   Set((e.releaseNotices ?? []).map(\.id)).count == (e.releaseNotices?.count ?? 0) else { throw ShelfError.invalid("Повторяющиеся источники или уведомления.") }
@@ -179,7 +194,9 @@ public final class ShelfRepository {
         if FileManager.default.fileExists(atPath: url.path) { snapshot = try Snapshot.decode(Data(contentsOf: url)) }
         else { snapshot = Snapshot() }
     }
-    public func commit(_ next: Snapshot) throws {
+    public func commit(_ proposed: Snapshot) throws {
+        // Watched episodes leave the new-episode inbox; old read notices are dropped.
+        let next = NoticeInbox.tidy(proposed)
         let data = try next.encoded()
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         // Atomic replacement: publish in-memory state only after the disk write succeeds.

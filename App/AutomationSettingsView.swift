@@ -17,6 +17,13 @@ struct AutomationSettingsView: View {
                 Button { assistant.queueCovers(force:true) } label: { HStack { Text("Найти недостающие обложки"); if assistant.findingCovers { Spacer(); ProgressView() } } }.disabled(assistant.findingCovers)
             } header: { Text("Автообложки") } footer: { Text("Обложка сохраняется при единственном точном совпадении названия. Ваше название и прогресс не меняются. Если вариантов несколько, их можно выбрать в карточке. Свои обложки и явно убранные изображения не заменяются.") }
             Section {
+                Toggle("Даты выхода из Shikimori",isOn:store.preference(\.catalogUpdates)).accessibilityIdentifier("catalog-updates")
+                Toggle("Напоминать о выходе серии",isOn:Binding(get:{store.snapshot.preferences.airingReminders},set:{ value in
+                    if !value { _ = store.change { $0.preferences.airingReminders = false }; return }
+                    Task { let allowed = await NotificationBridge.shared.enable(); _ = store.change { $0.preferences.airingReminders = allowed } }
+                })).disabled(!store.snapshot.preferences.catalogUpdates)
+            } header: { Text("Расписание выхода") } footer: { Text("Время следующей серии, сколько вышло и продолжения — из Shikimori; отправляются только номера тайтлов в каталоге. Время показа оригинальное, озвучка обычно позже.") }
+            Section {
                 Toggle("Фоновые проверки серий",isOn:store.preference(\.backgroundChecks)).onChange(of:store.snapshot.preferences.backgroundChecks) { _, _ in assistant.scheduleBackground() }
                 Toggle("Уведомлять о новых сериях",isOn:Binding(get:{store.snapshot.preferences.releaseNotifications},set:{ value in
                     if !value { _ = store.change { $0.preferences.releaseNotifications = false }; return }

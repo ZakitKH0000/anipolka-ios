@@ -42,6 +42,9 @@ struct SettingsView: View {
             } header: { Text("Отклик и сеть") } footer: { Text("Сохранённые обложки доступны офлайн. Ограничение Wi-Fi действует на все загружаемые изображения, в том числе результаты поиска. Поиск названий использует любую сеть.") }
             AutomationSettingsView()
             PrivacySettingsSection()
+            #if DEV_REMOTE
+            DevRemoteSection()
+            #endif
             Section {
                 Button("Импорт текстового списка",systemImage:"text.badge.plus") { showTextImport = true }.accessibilityIdentifier("text-import")
                 Button("Сохранить копию в Файлы",systemImage:"square.and.arrow.up") { export() }.disabled(busy || store.loadFailure != nil)

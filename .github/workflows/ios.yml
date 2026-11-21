@@ -3,6 +3,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      dev_remote:
+        description: Специальная сборка с управлением по Wi-Fi
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -31,9 +36,12 @@ jobs:
       - name: Release ARM64 для физического iPhone
         run: |
           set -o pipefail
+          FLAGS=()
+          # The special build adds the Wi-Fi test server (App/DevRemote.swift); the normal build never contains it.
+          if [ "${{ inputs.dev_remote }}" = "true" ]; then FLAGS=('SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) DEV_REMOTE'); fi
           xcodebuild -project AniPolka.xcodeproj -scheme AniPolka -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/device \
-            CODE_SIGNING_ALLOWED=NO build | tee build/device-build.log
+            CODE_SIGNING_ALLOWED=NO "${FLAGS[@]}" build | tee build/device-build.log
       - name: Упаковка и проверка IPA
         run: |
           mkdir -p build/package/Payload
@@ -43,14 +51,15 @@ jobs:
           codesign --force --sign - --entitlements build/AniPolkaWidgets.entitlements build/package/Payload/AniPolka.app/PlugIns/AniPolkaWidgets.appex
           codesign --force --sign - --entitlements build/AniPolka.entitlements build/package/Payload/AniPolka.app
           cd build/package
-          /usr/bin/zip -qry ../artifacts/AniPolka-unsigned.ipa Payload
+          NAME=${{ inputs.dev_remote && 'AniPolka-dev-remote-unsigned.ipa' || 'AniPolka-unsigned.ipa' }}
+          /usr/bin/zip -qry ../artifacts/$NAME Payload
           cd ../..
-          python3 scripts/verify_ipa.py build/artifacts/AniPolka-unsigned.ipa
-          shasum -a 256 build/artifacts/AniPolka-unsigned.ipa > build/artifacts/SHA256.txt
+          python3 scripts/verify_ipa.py build/artifacts/$NAME
+          shasum -a 256 build/artifacts/$NAME > build/artifacts/SHA256.txt
           cp INSTALL_RU.md build/artifacts/
       - uses: actions/upload-artifact@v4
         with:
-          name: AniPolka-unsigned-IPA
+          name: ${{ inputs.dev_remote && 'AniPolka-dev-remote-IPA' || 'AniPolka-unsigned-IPA' }}
           path: build/artifacts/
           if-no-files-found: error
           retention-days: 90

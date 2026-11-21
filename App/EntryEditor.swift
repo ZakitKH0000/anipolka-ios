@@ -36,6 +36,10 @@ struct EntryDetail: View {
                         if let aliases = e.aliases, !aliases.isEmpty {
                             DisclosureGroup("Другие названия: \(aliases.count)") { VStack(alignment:.leading,spacing:4) { ForEach(aliases,id:\.self) { Text($0).font(.subheadline).textSelection(.enabled) } }.frame(maxWidth:.infinity,alignment:.leading) }.font(.subheadline)
                         }
+                        AiringCard(entry:e)
+                        if let hint = Airing.sequelSuggestion(e, in: store.snapshot) {
+                            SequelRow(entry:e,hint:hint).padding(12).background(.thinMaterial,in:RoundedRectangle(cornerRadius:22,style:.continuous))
+                        }
                         ResumeCard(entry:e)
                         WatchLinksSection(entry:e)
                         RelatedPartsSection(entry:e)

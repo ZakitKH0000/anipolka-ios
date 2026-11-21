@@ -7,6 +7,7 @@ import UserNotifications
     static let markAction = "mark-watched"
     private var digestSignature: String?
     private var premiereSignature: String?
+    private var airingSignature: String?
     func enable() async -> Bool { (try? await UNUserNotificationCenter.current().requestAuthorization(options:[.alert,.sound,.badge])) ?? false }
     func registerCategories() {
         let mark = UNNotificationAction(identifier:Self.markAction,title:"+1 · Отметить серию просмотренной",options:[])
@@ -55,6 +56,30 @@ import UserNotifications
                 let content = UNMutableNotificationContent()
                 content.title = "Сегодня премьера"; content.body = "«\(entry.title)» — пора смотреть первую серию."; content.sound = .default
                 try? await center.add(UNNotificationRequest(identifier:"premiere-\(entry.id.uuidString)",content:content,trigger:UNCalendarNotificationTrigger(dateMatching:when,repeats:false)))
+            }
+        }
+    }
+    /// A reminder at the announced broadcast time of the next episode (Shikimori schedule).
+    func scheduleAiring(_ snapshot: Snapshot) {
+        let now = Date()
+        let due: [(Entry, Date, Int)] = snapshot.preferences.airingReminders ? snapshot.entries.compactMap { e -> (Entry, Date, Int)? in
+            guard e.status == .watching || e.status == .planned, let at = e.airing?.nextEpisodeAt, at > now, at < now.addingTimeInterval(8 * 86400),
+                  let episode = Airing.nextEpisode(e, now: now) else { return nil }
+            return (e, at, episode)
+        }.prefix(40).map { $0 } : []
+        let signature = due.map { "\($0.0.id)|\($0.0.title)|\($0.1.timeIntervalSince1970)|\($0.2)" }.joined(separator:"\n")
+        guard signature != airingSignature else { return }
+        airingSignature = signature
+        let center = UNUserNotificationCenter.current()
+        Task {
+            let stale = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix("airing-") }
+            center.removePendingNotificationRequests(withIdentifiers:stale)
+            for (entry,at,episode) in due {
+                let content = UNMutableNotificationContent()
+                content.title = "Вышла серия \(episode) · \(entry.title)"
+                content.body = "По расписанию Shikimori. Озвучка на сайтах обычно появляется позже."; content.sound = .default
+                let when = Calendar.current.dateComponents([.year,.month,.day,.hour,.minute],from:at)
+                try? await center.add(UNNotificationRequest(identifier:"airing-\(entry.id.uuidString)",content:content,trigger:UNCalendarNotificationTrigger(dateMatching:when,repeats:false)))
             }
         }
     }

@@ -127,6 +127,11 @@ import ImageIO
         try Task.checkCancellation()
         guard let html = String(data:data,encoding:.utf8) else { throw ShelfError.invalid("Не удалось прочитать страницу источника.") }; return html
     }
+    /// Broadcast data for up to 50 titles in one request; only catalogue IDs are sent.
+    func airing(ids: [Int]) async throws -> [Int: AiringInfo] {
+        guard !ids.isEmpty else { return [:] }
+        return try Airing.parse(await metadata(URL(string:"https://shikimori.io/api/graphql")!,body:Airing.query(ids)))
+    }
     func alternatives(id: Int) async throws -> [String] {
         struct Shot: Decodable { let original: String }
         let data = try await metadata(URL(string: "https://shikimori.io/api/animes/\(id)/screenshots")!)

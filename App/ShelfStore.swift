@@ -20,9 +20,13 @@ import UIKit
         fileURL = base.appendingPathComponent(demo ? "AniPolka-preview/shelf.json" : "AniPolka/shelf.json")
         do { repository = try ShelfRepository(url: fileURL); snapshot = repository!.snapshot }
         catch { loadFailure = "Локальный файл не удалось прочитать. Он сохранён без изменений. Восстановите резервную копию в настройках.\n\(error.localizedDescription)" }
+        // Notices of episodes already watched are filed as read right away (the commit tidies them).
+        if loadFailure == nil, NoticeInbox.tidy(snapshot) != snapshot, let repository {
+            do { try repository.commit(snapshot); snapshot = repository.snapshot } catch {}
+        }
         var repaired = snapshot
         if repaired.removePlaceholderCovers() {
-            do { try repository?.commit(repaired); snapshot = repaired }
+            do { try repository?.commit(repaired); snapshot = repository?.snapshot ?? repaired }
             catch { self.error = "Не удалось удалить заглушку обложки: \(error.localizedDescription)" }
         }
         if demo && ProcessInfo.processInfo.arguments.contains("--reset") {
@@ -99,6 +103,7 @@ import UIKit
         WidgetBridge.shared.publish(snapshot)
         NotificationBridge.shared.scheduleDigest(snapshot)
         NotificationBridge.shared.schedulePremieres(snapshot)
+        NotificationBridge.shared.scheduleAiring(snapshot)
     }
     func preference<T>(_ path: WritableKeyPath<Preferences, T>) -> Binding<T> {
         Binding(get: { self.snapshot.preferences[keyPath: path] }, set: { value in _ = self.change { $0.preferences[keyPath: path] = value } })

@@ -11,7 +11,7 @@ struct RootView: View {
     var body: some View {
         TabView {
             ShelfView().tabItem { Label("Коллекция",systemImage:"books.vertical.fill") }
-            NavigationStack { ReleasesView() }.tabItem { Label("Серии",systemImage:"bell") }.badge(store.snapshot.entries.flatMap { $0.releaseNotices ?? [] }.filter { !$0.read }.count)
+            NavigationStack { ReleasesView() }.tabItem { Label("Серии",systemImage:"bell") }.badge(NoticeInbox.unread(store.snapshot))
             NavigationStack { SettingsView() }.tabItem { Label("Настройки",systemImage:"slider.horizontal.3") }
         }
         .tint(.blue)
@@ -288,6 +288,8 @@ struct PosterCard: View {
                         .overlay(alignment:.topTrailing) {
                             if let n = Backlog.available(entry) {
                                 Text("+\(n)").font(.caption.bold()).padding(.horizontal,9).padding(.vertical,5).background(Color.blue,in:Capsule()).foregroundStyle(.white).padding(8)
+                            } else if let at = Airing.upcoming(entry), at < Date().addingTimeInterval(8 * 86400) {
+                                CountdownChip(at:at).padding(8)
                             }
                         }
                         .overlay(alignment:.bottom) {
