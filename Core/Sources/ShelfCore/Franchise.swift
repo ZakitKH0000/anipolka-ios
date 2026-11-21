@@ -195,6 +195,10 @@ public enum Franchise {
             e.episodeOffset = offset; e.episode = offset
         }
         if status == .watching { e.watchedAt = now }
+        if let previous, isMain(part), let total = part.episodes, (previous.episodeOffset ?? 0) >= suggestedOffset(part, in: info) + total {
+            e.status = .completed; e.completedAt = now; e.watchedAt = nil
+            e.episode = (info.absolute == true ? suggestedOffset(part, in: info) : 0) + total
+        }
         return e
     }
 

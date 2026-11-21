@@ -48,7 +48,7 @@ struct EntryDetail: View {
                         NextSeasonCard(entry:e) { newID in withAnimation(.snappy) { shownID = newID } }
                         if inAppPlayer, WatchTarget.available(e) {
                             Button { watching = e.seasonEpisode + 1 } label: {
-                                Label("Смотреть серию \(e.seasonEpisode + 1) в АниПолке",systemImage:"play.fill").font(.headline).frame(maxWidth:.infinity,minHeight:50)
+                                Label("Смотреть серию \((e.episodeOffset ?? 0) > 0 ? e.episode + 1 : e.seasonEpisode + 1) в АниПолке",systemImage:"play.fill").font(.headline).frame(maxWidth:.infinity,minHeight:50)
                             }.buttonStyle(.borderedProminent).accessibilityIdentifier("watch-in-app")
                         }
                         ResumeCard(entry:e)
@@ -89,6 +89,7 @@ struct EntryDetail: View {
                     .toolbar { Button("Изменить") { editing = true }.accessibilityIdentifier("edit-entry") }
                     // A solid bar under «Готово» / «Изменить»: text scrolling under the buttons no longer shows through.
                     .toolbarBackground(.visible, for: .navigationBar)
+                    .modifier(HardTopEdge())
                     .sheet(isPresented:$editing) { EntryEditor(entry:e) {} }
                     .sheet(isPresented:$showSources) { EntrySourcesView(entryID:currentID) }
                     .fullScreenCover(item:Binding(get:{ watching.map { WatchEpisode(number:$0) } },set:{ watching = $0?.number })) { item in
@@ -103,6 +104,13 @@ struct EntryDetail: View {
     }
 }
 struct WatchEpisode: Identifiable { let number: Int; var id: Int { number } }
+
+/// iOS 26 glass bars let content show through; a hard scroll edge keeps the top buttons on a solid band.
+struct HardTopEdge: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) { content.scrollEdgeEffectStyle(.hard, for: .top) } else { content }
+    }
+}
 
 /// A card block that folds to one line; whether it is open is remembered for all titles.
 struct CollapsibleBlock<Content: View>: View {

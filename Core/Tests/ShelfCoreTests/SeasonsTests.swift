@@ -48,6 +48,35 @@ final class SeasonsTests: XCTestCase {
         XCTAssertEqual(try Snapshot.decode(moved.encoded()), moved)
     }
 
+    func testThroughCountingSourceAndWatchedSeasonsAfterTheMove() throws {
+        var (s, id) = snapshot(episode: 48)
+        // AniVibe counted through seasons while the entry was season 1: 48 > 26.
+        s.entries[0].subscriptions = [ReleaseSubscription(pageURL: "https://anivibe.pro/anime/1", optionID: "kodik-1-1", label: "Студия", episode: 48)]
+        let over = try XCTUnwrap(Franchise.overflow(s.entries[0], in: s))
+        Franchise.move(&s, entryID: id, to: over)
+        XCTAssertEqual(s.entries[0].subscriptions?.first?.offset, 26)
+        XCTAssertNil(Backlog.available(s.entries[0]))
+        let info = try XCTUnwrap(s.franchises?.first)
+        XCTAssertTrue(Franchise.covered(info.parts[0], in: info, snapshot: s))
+        XCTAssertFalse(Franchise.covered(info.parts[1], in: info, snapshot: s))
+        XCTAssertEqual(Franchise.watched(in: info, snapshot: s), 48)
+        // Adding season 1 later creates it as already watched.
+        let added = Franchise.entry(for: info.parts[0], after: s.entries[0], in: info, status: .watching)
+        XCTAssertEqual(added.status, .completed); XCTAssertEqual(added.episode, 26)
+    }
+
+    func testAlignSourcesRepairsAnEntryMovedBefore() {
+        var e = Entry(title: "За гранью времени", episode: 48); e.episodeOffset = 26
+        e.airing = AiringInfo(checkedAt: Date(), status: Airing.ongoing, episodes: 52, episodesAired: 22)
+        e.subscriptions = [ReleaseSubscription(pageURL: "https://anivibe.pro/anime/1", optionID: "kodik-1-1", label: "Студия", episode: 48)]
+        XCTAssertEqual(Backlog.available(e), 26)
+        XCTAssertTrue(Franchise.alignSources(&e))
+        XCTAssertNil(Backlog.available(e))
+        // A source counting inside the season is left alone.
+        var inside = e; inside.subscriptions![0].offset = nil; inside.subscriptions![0].lastEpisode = 22
+        XCTAssertFalse(Franchise.alignSources(&inside))
+    }
+
     func testOverflowIsNotSuggestedWhenTheNextSeasonIsAlreadyInTheCollection() {
         var (s, _) = snapshot(episode: 48)
         var second = Entry(title: "За гранью времени 2", episode: 3); second.sourceID = 64398; second.franchise = "chain-62340"

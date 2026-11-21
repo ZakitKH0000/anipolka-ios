@@ -83,11 +83,44 @@ extension Franchise {
     /// Moves the entry to the season its number belongs to; the user's own number stays as through-season numbering.
     public static func move(_ snapshot: inout Snapshot, entryID: UUID, to position: SeasonPosition, now: Date = Date()) {
         guard let i = snapshot.entries.firstIndex(where: { $0.id == entryID }), let key = snapshot.entries[i].franchise else { return }
+        let oldTotal = snapshot.franchises?.first(where: { $0.key == key }).flatMap { part(snapshot.entries[i], in: $0) }?.episodes ?? Int.max
+        for j in (snapshot.entries[i].subscriptions ?? []).indices where snapshot.entries[i].subscriptions![j].offset == nil {
+            if let last = snapshot.entries[i].subscriptions![j].lastEpisode, last > oldTotal, last >= position.offset { snapshot.entries[i].subscriptions![j].offset = position.offset }
+        }
         rebind(&snapshot, entryID: entryID, to: position.part, now: now)
         snapshot.entries[i].episodeOffset = position.offset
         snapshot.entries[i].season = position.season
         if snapshot.entries[i].status == .completed { snapshot.entries[i].status = .watching; snapshot.entries[i].completedAt = nil }
         if let f = snapshot.franchises?.firstIndex(where: { $0.key == key }) { snapshot.franchises![f].absolute = true }
+    }
+
+    /// Sources that report more episodes than this season has aired count through seasons; they get the entry's offset.
+    @discardableResult public static func alignSources(_ entry: inout Entry) -> Bool {
+        guard let offset = entry.episodeOffset, offset > 0, let aired = entry.airing?.episodesAired ?? entry.airing?.episodes else { return false }
+        var changed = false
+        for j in (entry.subscriptions ?? []).indices where entry.subscriptions![j].offset == nil {
+            if let last = entry.subscriptions![j].lastEpisode, last > aired + 1, last >= offset, last - offset <= aired + 1 {
+                entry.subscriptions![j].offset = offset; changed = true
+            }
+        }
+        return changed
+    }
+
+    /// A season that lies before the start of a through-season entry of the same franchise: already watched.
+    public static func covered(_ part: FranchisePart, in info: FranchiseInfo, snapshot: Snapshot) -> Bool {
+        guard isMain(part), let total = part.episodes else { return false }
+        let end = suggestedOffset(part, in: info) + total
+        return snapshot.entries.contains { $0.franchise == info.key && ($0.episodeOffset ?? 0) >= end }
+    }
+
+    /// Episodes of the main seasons watched: a through-season number already includes the seasons before it.
+    public static func watched(in info: FranchiseInfo, snapshot: Snapshot) -> Int {
+        let owned = snapshot.entries.filter { $0.franchise == info.key }
+        if info.absolute == true { return owned.map(\.episode).max() ?? 0 }
+        let main = Set(info.parts.filter(isMain).map(\.id))
+        let own = owned.filter { main.contains($0.sourceID ?? -1) }.reduce(0) { $0 + $1.seasonEpisode }
+        let before = info.parts.filter { main.contains($0.id) && covered($0, in: info, snapshot: snapshot) && !owned.contains(where: { e in e.sourceID == $0.id && e.seasonEpisode > 0 }) }.reduce(0) { $0 + ($1.episodes ?? 0) }
+        return own + before
     }
 
     /// The second line under the big number: «сезон 2 · серия 22» or just «сезон 2».

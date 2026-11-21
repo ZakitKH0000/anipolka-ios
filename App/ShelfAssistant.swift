@@ -201,6 +201,7 @@ import UserNotifications
                 for (entry, episode) in dubbed { await NotificationBridge.shared.deliverInfo(id: "libria-\(entry.id.uuidString)-\(episode)", title: "Озвучка AniLibria · \(entry.title)", body: "Вышла серия \(episode) в озвучке AniLibria.") }
             }
         }
+        _ = store.change { state in for i in state.entries.indices { Franchise.alignSources(&state.entries[i]) } }
         // Titles without a Shikimori franchise get their seasons from the prequel/sequel chain.
         let loose = store.snapshot.entries.filter { $0.franchise == nil && $0.sourceID != nil && $0.airing?.franchise == "" && $0.status != .dropped }
         for e in loose.prefix(8) {

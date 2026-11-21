@@ -18,7 +18,7 @@ struct FranchiseSeasonsStrip: View {
                                 if let owned { onSelect(owned.id) } else { adding = part }
                             } label: {
                                 HStack(spacing: 5) {
-                                    if owned?.status == .completed { Image(systemName: "checkmark.circle.fill").font(.caption) }
+                                    if owned?.status == .completed || Franchise.covered(part, in: info, snapshot: store.snapshot) { Image(systemName: "checkmark.circle.fill").font(.caption) }
                                     else if owned == nil { Image(systemName: "plus.circle").font(.caption) }
                                     Text(Franchise.label(part, in: info)).font(.subheadline.weight(.semibold))
                                 }
@@ -58,9 +58,9 @@ struct FranchiseSection: View {
     var body: some View {
         if let info = Franchise.info(entry, in: store.snapshot) {
             let owned = info.parts.compactMap { p in store.snapshot.entries.first { $0.sourceID == p.id } }
-            let done = owned.filter { $0.status == .completed }.count
+            let done = info.parts.filter { p in owned.contains { $0.sourceID == p.id && $0.status == .completed } || Franchise.covered(p, in: info, snapshot: store.snapshot) }.count
             let mainParts = info.parts.filter(Franchise.isMain)
-            let watched = owned.reduce(0) { $0 + $1.seasonEpisode }
+            let watched = Franchise.watched(in: info, snapshot: store.snapshot)
             let total = mainParts.reduce(0) { $0 + ($1.episodes ?? 0) }
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -82,7 +82,7 @@ struct FranchiseSection: View {
                                 Text(partLine(part, entry: e, info: info)).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer(minLength: 4)
-                            if e?.status == .completed { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                            if e?.status == .completed || Franchise.covered(part, in: info, snapshot: store.snapshot) { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
                             else if e != nil { Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary) }
                         }
                     }.buttonStyle(.plain).disabled(e == nil)
@@ -114,7 +114,8 @@ struct FranchiseSection: View {
     private func partLine(_ part: FranchisePart, entry e: Entry?, info: FranchiseInfo) -> String {
         var items = [Franchise.label(part, in: info)]
         if let year = part.airedOn?.prefix(4) { items.append(String(year)) }
-        if let e { items.append(e.status == .completed ? "досмотрено" : "серия \(e.seasonEpisode)" + (part.episodes.map { " из \($0)" } ?? "")) }
+        if e?.status == .completed || Franchise.covered(part, in: info, snapshot: store.snapshot) { items.append("досмотрено") }
+        else if let e { items.append("серия \(e.seasonEpisode)" + (part.episodes.map { " из \($0)" } ?? "")) }
         else { items.append(part.status == Airing.anons ? "анонс" : (part.episodes.map { "\($0) \(episodesWord($0))" } ?? "нет в коллекции")) }
         return items.joined(separator: " · ")
     }
