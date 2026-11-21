@@ -36,6 +36,7 @@ import UserNotifications
                         if lock.locked && store.snapshot.preferences.appLock { Task { await lock.authenticate() } }
                         assistant.queueCovers()
                         Task { await assistant.refreshAiring() }
+                        if !store.demo { AutoBackup.runIfDue(store.snapshot) }
                         let hasDue = store.snapshot.entries.contains { ($0.subscriptions ?? []).contains { $0.enabled && ($0.lastCheckedAt ?? .distantPast).timeIntervalSinceNow < -3600 } }
                         if hasDue { Task { await assistant.checkReleases(background:true) } }
                     }

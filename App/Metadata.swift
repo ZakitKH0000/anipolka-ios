@@ -127,6 +127,13 @@ import ImageIO
         try Task.checkCancellation()
         guard let html = String(data:data,encoding:.utf8) else { throw ShelfError.invalid("Не удалось прочитать страницу источника.") }; return html
     }
+    /// Exact next episodes from AniList (Shikimori ids are MyAnimeList ids).
+    func aniList(_ ids: [Int]) async throws -> [Int: AniList.Next] {
+        guard !ids.isEmpty else { return [:] }
+        return try AniList.parse(await metadata(URL(string:"https://graphql.anilist.co")!,body:AniList.query(ids)))
+    }
+    /// AniLibria's weekly dub schedule.
+    func libriaSchedule() async throws -> [Int: LibriaInfo] { try AniLibria.parseSchedule(await metadata(AniLibria.scheduleURL)) }
     /// The same spaced, rate-limited catalogue request for the catalogue screens in other files.
     func metadataPublic(_ url: URL, body: Data? = nil) async throws -> Data { try await metadata(url, body: body) }
     /// Broadcast data for up to 50 titles in one request; only catalogue IDs are sent.

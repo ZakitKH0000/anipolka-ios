@@ -20,11 +20,13 @@ struct SettingsView: View {
     @State private var busy = false
     @State private var notice: String?
     @State private var showReorder = false
+    @State private var showListImport = false
     var body: some View {
         Form {
             Section {
                 NavigationLink { StatsView() } label: { Label("Итоги просмотра",systemImage:"chart.bar") }.accessibilityIdentifier("open-stats")
                 NavigationLink { ReportView() } label: { Label("Текст для копирования",systemImage:"doc.plaintext") }.accessibilityIdentifier("open-report")
+                NavigationLink { DiaryFeedView() } label: { Label("Дневник просмотра",systemImage:"book.pages") }
             } footer: { Text("Список историй, серии и итоги обычным текстом: для заметок, друга или ИИ-ассистента.") }
             Section("Оформление") {
                 PreferencePicker(title:"Тема",choices:Theme.allCases,value:store.preference(\.theme),name:{$0.rawValue}).accessibilityIdentifier("theme")
@@ -47,6 +49,8 @@ struct SettingsView: View {
             #endif
             Section {
                 Button("Импорт текстового списка",systemImage:"text.badge.plus") { showTextImport = true }.accessibilityIdentifier("text-import")
+                Button("Импорт по нику: Shikimori или MyAnimeList",systemImage:"person.crop.circle.badge.plus") { showListImport = true }.accessibilityIdentifier("list-import")
+                AutoBackupRow()
                 Button("Сохранить копию в Файлы",systemImage:"square.and.arrow.up") { export() }.disabled(busy || store.loadFailure != nil)
                 Button("Восстановить из Файлов",systemImage:"square.and.arrow.down") { showRestore = true }.disabled(busy)
                 if busy { ProgressView("Подготовка данных…") }
@@ -64,6 +68,7 @@ struct SettingsView: View {
         }.navigationTitle("Настройки").feedbackScreen("Настройки")
             .sheet(isPresented:$showTextImport) { TextImportView() }
             .sheet(isPresented:$showReorder) { ReorderView() }
+            .sheet(isPresented:$showListImport) { ListImportView() }
             .fileExporter(isPresented:$showExport,document:exportDocument,contentType:.json,defaultFilename:"АниПолка-\(Date().formatted(.iso8601.year().month().day()))") { result in
                 if case .success = result { notice = "Резервная копия сохранена." }
                 if case .failure(let error) = result { notice = "Копия не сохранена: \(error.localizedDescription)" }

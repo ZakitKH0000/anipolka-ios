@@ -9,9 +9,13 @@ public struct EpisodeNote: Codable, Equatable, Identifiable {
     public var time: String
     public var text: String
     public var createdAt: Date
-    public init(episode: Int, time: String = "", text: String = "", createdAt: Date = Date()) {
-        self.episode = episode; self.time = time; self.text = text; self.createdAt = createdAt
+    /// Diary: how the user liked this episode, 1…5.
+    public var rating: Int? = nil
+    public init(episode: Int, time: String = "", text: String = "", createdAt: Date = Date(), rating: Int? = nil) {
+        self.episode = episode; self.time = time; self.text = text; self.createdAt = createdAt; self.rating = rating
     }
+    /// A diary entry (a rating without a position), not a «где остановился» mark.
+    public var isDiary: Bool { rating != nil && time.isEmpty }
 }
 
 /// A place where the title is watched: a platform, a playlist, a specific dub.
@@ -38,7 +42,7 @@ public enum EpisodeTime {
 
 extension Entry {
     /// The latest note: where the user stopped last time.
-    public var resumePoint: EpisodeNote? { (notes ?? []).max { $0.createdAt < $1.createdAt } }
+    public var resumePoint: EpisodeNote? { (notes ?? []).filter { !$0.isDiary }.max { $0.createdAt < $1.createdAt } }
     public mutating func addNote(_ note: EpisodeNote) {
         var all = notes ?? []
         all.append(note)

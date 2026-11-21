@@ -59,6 +59,11 @@ import UserNotifications
             }
         }
     }
+    func deliverInfo(id: String, title: String, body: String) async {
+        let content = UNMutableNotificationContent()
+        content.title = title; content.body = body; content.sound = .default
+        try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
+    }
     /// A reminder at the announced broadcast time of the next episode (Shikimori schedule).
     func scheduleAiring(_ snapshot: Snapshot) {
         let now = Date()

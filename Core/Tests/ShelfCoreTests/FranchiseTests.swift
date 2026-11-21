@@ -79,4 +79,13 @@ final class FranchiseTests: XCTestCase {
         XCTAssertNil(s.entries[0].airing)
         XCTAssertNil(Franchise.seasonMismatch(s.entries[0], in: s))
     }
+
+    func testThroughNumberIsKeptWhenSwitchingOn() throws {
+        var s = try setup()
+        // The user already counts through seasons: 30 in season 3 (16 episodes) means 30 overall.
+        s.entries[1].episode = 30
+        Franchise.setAbsolute(&s, key: "yong_sheng", absolute: true)
+        let third = try XCTUnwrap(s.entries.first { $0.sourceID == 58448 })
+        XCTAssertEqual(third.episode, 30); XCTAssertEqual(third.episodeOffset, 24); XCTAssertEqual(third.seasonEpisode, 6)
+    }
 }

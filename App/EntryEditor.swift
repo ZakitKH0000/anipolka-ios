@@ -43,6 +43,7 @@ struct EntryDetail: View {
                             DisclosureGroup("Другие названия: \(aliases.count)") { VStack(alignment:.leading,spacing:4) { ForEach(aliases,id:\.self) { Text($0).font(.subheadline).textSelection(.enabled) } }.frame(maxWidth:.infinity,alignment:.leading) }.font(.subheadline)
                         }
                         SeasonMismatchCard(entry:e)
+                        SeasonDoneCard(entry:e)
                         NextSeasonCard(entry:e) { newID in withAnimation(.snappy) { shownID = newID } }
                         if inAppPlayer, WatchTarget.available(e) {
                             Button { watching = e.seasonEpisode + 1 } label: {
@@ -57,6 +58,7 @@ struct EntryDetail: View {
                             SequelRow(entry:e,hint:hint).padding(12).background(.thinMaterial,in:RoundedRectangle(cornerRadius:22,style:.continuous))
                         }
                         ResumeCard(entry:e)
+                        DiarySection(entry:e)
                         WatchLinksSection(entry:e)
                         RelatedPartsSection(entry:e)
                         NavigationLink { TitleHistoryView(id:e.id) } label: { Label("История просмотра",systemImage:"clock.arrow.circlepath") }.font(.subheadline).accessibilityIdentifier("entry-history")

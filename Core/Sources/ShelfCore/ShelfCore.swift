@@ -128,7 +128,7 @@ public struct Snapshot: Codable, Equatable {
                   (e.releaseDays ?? []).allSatisfy({ (1...7).contains($0) }), (e.releaseDays?.count ?? 0) <= 7,
                   (e.tags?.count ?? 0) <= Tags.limit, (e.tags ?? []).allSatisfy({ !$0.isEmpty && $0.count <= Tags.maxLength }),
                   (e.aliases?.count ?? 0) <= Aliases.limit, (e.aliases ?? []).allSatisfy({ !$0.isEmpty && $0.count <= Aliases.maxLength }),
-                  (e.notes?.count ?? 0) <= EpisodeNote.limit, (e.notes ?? []).allSatisfy({ (0...1_000_000).contains($0.episode) && $0.time.count <= 20 && $0.text.count <= 2000 }),
+                  (e.notes?.count ?? 0) <= EpisodeNote.limit, (e.notes ?? []).allSatisfy({ (0...1_000_000).contains($0.episode) && $0.time.count <= 20 && $0.text.count <= 2000 && ($0.rating == nil || (1...5).contains($0.rating!)) }),
                   (e.links?.count ?? 0) <= WatchLink.limit, (e.links ?? []).allSatisfy({ !$0.label.isEmpty && $0.label.count <= 100 && $0.url.count <= 4000 && ($0.url.lowercased().hasPrefix("https://") || $0.url.lowercased().hasPrefix("http://")) }),
                   e.rewatch == nil || (0...1000).contains(e.rewatch!), e.firstRunEpisode == nil || (0...1_000_000).contains(e.firstRunEpisode!),
                   (e.relatedIDs?.count ?? 0) <= Relations.limit else { throw ShelfError.invalid("Недопустимая оценка, расписание или метки записи «\(e.title.prefix(60))».") }

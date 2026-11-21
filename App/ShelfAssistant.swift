@@ -139,6 +139,29 @@ import UserNotifications
                 for i in state.entries.indices { if let id = state.entries[i].sourceID, let info = found[id] { state.entries[i] = Airing.apply(state.entries[i], info) } }
             }
         }
+        // AniList adds exact next episodes; AniLibria adds its dub schedule.
+        if force || !ids.isEmpty {
+            let active = Array(Set(store.snapshot.entries.filter { ($0.status == .watching || $0.status == .planned) && $0.airing != nil }.compactMap(\.sourceID)))
+            var next: [Int: AniList.Next] = [:]
+            var position = 0
+            while position < active.count {
+                let chunk = Array(active[position..<min(position + 50, active.count)]); position += 50
+                if let found = try? await network.aniList(chunk) { next.merge(found) { a, _ in a } }
+            }
+            let libria = (try? await network.libriaSchedule()) ?? [:]
+            var dubbed: [(Entry, Int)] = []
+            _ = store.change { state in
+                for i in state.entries.indices {
+                    guard let id = state.entries[i].sourceID, let info = state.entries[i].airing else { continue }
+                    let before = info.libria?.publishedEpisode
+                    state.entries[i].airing = Airing.merge(info, aniList: next[id], libria: libria[id] ?? (libria.isEmpty ? info.libria : nil))
+                    if let now = state.entries[i].airing?.libria?.publishedEpisode, let before, now > before, now > state.entries[i].seasonEpisode { dubbed.append((state.entries[i], now)) }
+                }
+            }
+            if store.snapshot.preferences.releaseNotifications {
+                for (entry, episode) in dubbed { await NotificationBridge.shared.deliverInfo(id: "libria-\(entry.id.uuidString)-\(episode)", title: "Озвучка AniLibria · \(entry.title)", body: "Вышла серия \(episode) в озвучке AniLibria.") }
+            }
+        }
         // Parts of every franchise in the collection, for the season tabs and the next-season prompt.
         let keys = Array(Set(store.snapshot.entries.compactMap(\.franchise))).sorted()
         for key in keys.prefix(60) {

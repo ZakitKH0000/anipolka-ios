@@ -150,6 +150,9 @@ enum WhatsNew {
         ("sun.max.fill", "Вкладка «Сегодня»", "Что вышло, что продолжить, что выходит сегодня и что догнать — на одном экране."),
         ("safari.fill", "Вкладка «Обзор»", "Дунхуа и онгоинги, анонсы, лучшие тайтлы и поиск — добавление в одно нажатие."),
         ("text.book.closed.fill", "О тайтле", "Сюжет, жанры, студия, оценка, кадры, трейлеры и похожие тайтлы прямо в карточке."),
+        ("waveform", "AniList и AniLibria", "Точное время следующей серии и выход серий в русской озвучке AniLibria."),
+        ("person.crop.circle.badge.plus", "Импорт по нику", "Перенос открытого списка с Shikimori или MyAnimeList без пароля."),
+        ("book.pages", "Дневник и салют", "Оценка каждой серии звёздами, салют и карточка «Сезон досмотрен», автокопия раз в неделю."),
         ("hand.wave.fill", "Студия", "Встряхните iPhone — и предложите идею или сообщите об ошибке со снимком экрана."),
     ]
     static func shouldShow() -> Bool { UserDefaults.standard.string(forKey: "whatsNewSeen") != version }
@@ -193,12 +196,14 @@ struct LabView: View {
     @EnvironmentObject var store: ShelfStore
     @AppStorage(Lab.inAppPlayer) private var inAppPlayer = true
     @AppStorage(Lab.shakeFeedback) private var shakeFeedback = true
+    @AppStorage(Lab.celebrate) private var celebrate = true
     var body: some View {
         Form {
             Section {
                 Toggle("Просмотр внутри АниПолки", isOn: $inAppPlayer)
                 Toggle("Одна карточка на франшизу", isOn: store.preference(\.groupFranchises))
                 Toggle("Встряхнуть — сообщить об ошибке", isOn: $shakeFeedback)
+                Toggle("Салют «Сезон досмотрен»", isOn: $celebrate)
             } footer: { Text("Экспериментальные функции: если что-то мешает, просто выключите. Данные коллекции не меняются.") }
         }
         .navigationTitle("Лаборатория")

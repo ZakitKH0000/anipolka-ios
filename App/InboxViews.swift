@@ -220,6 +220,14 @@ struct AiringCard: View {
                         .font(.headline).foregroundStyle(at == nil ? Color.primary : Color.orange)
                     if let at { Text(Airing.moment(at, now: context.date).capitalizedFirst + " · " + Airing.progressText(info).lowercased()).font(.subheadline).foregroundStyle(.secondary) }
                     if let n = Airing.aired(entry) { Text("Уже вышло и не просмотрено: \(n) \(episodesWord(n))").font(.subheadline.bold()).foregroundStyle(.tint) }
+                    if let libria = info.libria {
+                        HStack(spacing: 6) {
+                            Image(systemName: "waveform").foregroundStyle(.orange)
+                            Text(libriaLine(libria)).font(.subheadline)
+                            Spacer(minLength: 4)
+                            if let url = URL(string: libria.url) { Link("Открыть", destination: url).font(.subheadline.weight(.semibold)) }
+                        }
+                    }
                     Text("Shikimori · время оригинального показа; озвучка обычно выходит позже. Обновлено \(agoText(info.checkedAt)).").font(.caption2).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).padding(16)
@@ -227,6 +235,13 @@ struct AiringCard: View {
             }
         }
     }
+}
+
+private func libriaLine(_ l: LibriaInfo) -> String {
+    var parts: [String] = []
+    if let p = l.publishedEpisode { parts.append("AniLibria: озвучена серия \(p)") } else { parts.append("AniLibria озвучивает") }
+    if let n = l.nextEpisode, let day = l.weekday { parts.append("\(n)-я — \(["вс", "пн", "вт", "ср", "чт", "пт", "сб"][day - 1])") }
+    return parts.joined(separator: " · ")
 }
 
 /// Small countdown chip on a cover: «⏱ 2 д».

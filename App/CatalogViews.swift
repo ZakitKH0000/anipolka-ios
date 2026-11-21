@@ -252,7 +252,7 @@ struct TodayView: View {
     @EnvironmentObject var store: ShelfStore
     var body: some View {
         let s = store.snapshot
-        let fresh = s.entries.filter { e in (e.releaseNotices ?? []).contains { !$0.read } || Backlog.available(e) != nil || Airing.aired(e) != nil }
+        let fresh = s.entries.filter { e in (e.releaseNotices ?? []).contains { !$0.read } || Backlog.available(e) != nil || Airing.aired(e) != nil || AniLibria.ahead(e) != nil }
             .filter { $0.status == .watching || $0.status == .planned }
         let today = Airing.calendar(s.entries).first?.items ?? []
         let continuing = ReleasePlanner.continuing(s.entries, limit: 6).filter { e in !fresh.contains { $0.id == e.id } }
@@ -298,6 +298,7 @@ struct TodayView: View {
     private func newLine(_ e: Entry) -> String {
         if let n = (e.releaseNotices ?? []).filter({ !$0.read }).map(\.episode).max() { return "Серия \(n) · новая в источнике" }
         if let n = Backlog.available(e) { return "Доступно ещё \(n) \(episodesWord(n))" }
+        if let n = AniLibria.ahead(e) { return "В озвучке AniLibria: ещё \(n) \(episodesWord(n))" }
         if let n = Airing.aired(e) { return "Вышло и не просмотрено: \(n) \(episodesWord(n))" }
         return ""
     }

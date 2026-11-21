@@ -97,6 +97,8 @@ struct FranchiseSection: View {
                         Text("Этот сезон начинается с серии \((entry.episodeOffset ?? 0) + 1) · изменить").font(.footnote)
                     }
                     Text("Серия \(entry.episode) по сквозному счёту = серия \(entry.seasonEpisode) этого сезона. Сайты и Shikimori считают внутри сезона.").font(.caption).foregroundStyle(.secondary)
+                } else if let part = Franchise.part(entry, in: info), Franchise.countsThroughSeasons(entry, part: part), let total = part.episodes {
+                    Text("Серия \(entry.episode) больше, чем серий в этом сезоне (\(total)). Похоже, вы считаете через все сезоны — включите «Сквозную нумерацию»: номер 200 сохранится, а приложение посчитает серию внутри сезона.").font(.caption).foregroundStyle(.orange)
                 } else {
                     Text("Сейчас серии считаются внутри каждого сезона, как на Shikimori и AniVibe. Включите, если вы привыкли к одному номеру через все сезоны.").font(.caption).foregroundStyle(.secondary)
                 }

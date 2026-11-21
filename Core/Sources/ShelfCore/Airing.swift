@@ -27,8 +27,13 @@ public struct AiringInfo: Codable, Equatable {
     public var sequel: SequelHint?
     /// Shikimori franchise key, shared by every season of the story.
     public var franchise: String?
-    public init(checkedAt: Date, status: String, episodes: Int? = nil, episodesAired: Int? = nil, nextEpisodeAt: Date? = nil, sequel: SequelHint? = nil, franchise: String? = nil) {
+    /// Number of the next episode when AniList announces it.
+    public var nextEpisode: Int?
+    /// AniLibria's dub schedule, when the title is in it.
+    public var libria: LibriaInfo?
+    public init(checkedAt: Date, status: String, episodes: Int? = nil, episodesAired: Int? = nil, nextEpisodeAt: Date? = nil, sequel: SequelHint? = nil, franchise: String? = nil, nextEpisode: Int? = nil, libria: LibriaInfo? = nil) {
         self.checkedAt = checkedAt; self.status = status; self.episodes = episodes; self.episodesAired = episodesAired; self.nextEpisodeAt = nextEpisodeAt; self.sequel = sequel; self.franchise = franchise
+        self.nextEpisode = nextEpisode; self.libria = libria
     }
 }
 
@@ -127,7 +132,7 @@ public enum Airing {
     /// Number of the next episode to air, when the catalogue announces a time.
     public static func nextEpisode(_ e: Entry, now: Date = Date()) -> Int? {
         guard upcoming(e, now: now) != nil, let info = e.airing else { return nil }
-        return (info.episodesAired ?? 0) + 1
+        return info.nextEpisode ?? (info.episodesAired ?? 0) + 1
     }
 
     /// «через 2 д 5 ч», «через 40 мин», «уже вышла».

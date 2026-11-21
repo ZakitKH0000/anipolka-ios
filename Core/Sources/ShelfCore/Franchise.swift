@@ -223,14 +223,21 @@ public enum Franchise {
             let seasonEpisode = snapshot.entries[i].seasonEpisode
             if absolute, let part = Franchise.part(snapshot.entries[i], in: info) {
                 let offset = suggestedOffset(part, in: info)
+                let alreadyThrough = snapshot.entries[i].episodeOffset == nil && countsThroughSeasons(snapshot.entries[i], part: part)
                 snapshot.entries[i].episodeOffset = offset
-                snapshot.entries[i].episode = min(1_000_000, offset + seasonEpisode)
+                if !alreadyThrough { snapshot.entries[i].episode = min(1_000_000, offset + seasonEpisode) }
             } else {
                 snapshot.entries[i].episode = seasonEpisode
                 snapshot.entries[i].episodeOffset = nil
             }
         }
         snapshot.franchises![f].absolute = absolute ? true : nil
+    }
+
+    /// The number is larger than the whole season: the user already counts through all seasons.
+    public static func countsThroughSeasons(_ entry: Entry, part: FranchisePart) -> Bool {
+        guard entry.episodeOffset == nil, let total = part.episodes else { return false }
+        return entry.episode > total
     }
 
     /// The user corrects where this season starts in through-season numbering (episodes before it).
