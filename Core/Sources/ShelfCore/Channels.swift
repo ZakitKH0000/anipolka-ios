@@ -155,10 +155,22 @@ public enum TelegramChannel {
     }
     /// The title words must stand in the first lines of the post, where studios put the title.
     public static func matches(_ text: String, keyword: String) -> Bool {
-        let words = keyword.components(separatedBy: "|").map(TitleIdentity.normalized).filter { $0.count >= 3 }
-        guard !words.isEmpty else { return false }
-        let head = TitleIdentity.normalized(text.components(separatedBy: "\n").prefix(3).joined(separator: " "))
-        return words.contains { " \(head) ".contains(" \($0) ") }
+        let titles = keyword.components(separatedBy: "|").map(words).filter { $0.joined().count >= 3 }
+        guard !titles.isEmpty else { return false }
+        let head = words(text.components(separatedBy: "\n").prefix(3).joined(separator: " "))
+        return titles.contains { title in
+            guard title.count <= head.count else { return false }
+            return (0...(head.count - title.count)).contains { Array(head[$0..<$0 + title.count]) == title }
+        }
+    }
+    /// Lowercase words of letters and digits only. Emoji selectors and other marks are dropped:
+    /// as Swift characters they would glue to a neighbouring space and break the comparison.
+    static func words(_ text: String) -> [String] {
+        let folded = text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "ru_RU")).replacingOccurrences(of: "ё", with: "е")
+        let keep = CharacterSet.letters.subtracting(.nonBaseCharacters).union(.decimalDigits)
+        var scalars = String.UnicodeScalarView()
+        for scalar in folded.unicodeScalars { scalars.append(keep.contains(scalar) ? scalar : " ") }
+        return String(scalars).split(separator: " ").map(String.init)
     }
     /// One option: the newest episode of the title among the visible posts. Without a fresh post the known episode stays.
     public static func page(_ html: String, url: String, keyword: String, label: String, known: Int? = nil) throws -> SourcePage {

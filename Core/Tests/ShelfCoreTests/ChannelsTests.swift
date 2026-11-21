@@ -78,6 +78,11 @@ final class ChannelsTests: XCTestCase {
         <div class="tgme_widget_message_wrap"><div class="tgme_widget_message" data-post="FumoDub/6038"><div class="tgme_widget_message_text js-message_text" dir="auto">✨ Пощади меня, великий господин! 3<br/>▫️ Da Wang Rao Ming 3<br/><br/>⚡ Серия: 10-16 &amp; бонус</div></div></div>
         """
         XCTAssertEqual(TelegramChannel.posts(html).count, 2)
+        // «▫️» carries an invisible emoji selector right after a space.
+        XCTAssertTrue(TelegramChannel.matches("✨\u{FE0F} Пощади меня, великий господин! 3\n▫\u{FE0F} Da Wang Rao Ming 3", keyword: "Пощади меня, великий господин! 3"))
+        XCTAssertFalse(TelegramChannel.matches("Пощади меня, великий господин! 3", keyword: "Пощади меня великий господин 2"))
+        XCTAssertFalse(TelegramChannel.matches("Пощади меня", keyword: "Пощади меня великий господин"))
+        XCTAssertEqual(TelegramChannel.words("Ёж — «Ёлка» 2"), ["еж", "елка", "2"])
         let page = try TelegramChannel.page(html, url: "@FumoDub", keyword: "Пощади меня, великий господин! 3", label: "FumoDub · Telegram")
         XCTAssertEqual(page.options.first?.episode, 16)
         XCTAssertEqual(page.watchURL(for: page.options[0], episode: 16), "https://t.me/FumoDub/6038")
