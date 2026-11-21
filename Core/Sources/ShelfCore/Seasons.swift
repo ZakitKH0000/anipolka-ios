@@ -119,7 +119,9 @@ extension Franchise {
         if info.absolute == true { return owned.map(\.episode).max() ?? 0 }
         let main = Set(info.parts.filter(isMain).map(\.id))
         let own = owned.filter { main.contains($0.sourceID ?? -1) }.reduce(0) { $0 + $1.seasonEpisode }
-        let before = info.parts.filter { main.contains($0.id) && covered($0, in: info, snapshot: snapshot) && !owned.contains(where: { e in e.sourceID == $0.id && e.seasonEpisode > 0 }) }.reduce(0) { $0 + ($1.episodes ?? 0) }
+        let before = info.parts.filter { part in
+            main.contains(part.id) && covered(part, in: info, snapshot: snapshot) && !owned.contains { $0.sourceID == part.id && $0.seasonEpisode > 0 }
+        }.reduce(0) { $0 + ($1.episodes ?? 0) }
         return own + before
     }
 
