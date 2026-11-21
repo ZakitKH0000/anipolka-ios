@@ -27,6 +27,7 @@ struct SettingsView: View {
                 NavigationLink { StatsView() } label: { Label("Итоги просмотра",systemImage:"chart.bar") }.accessibilityIdentifier("open-stats")
                 NavigationLink { ReportView() } label: { Label("Текст для копирования",systemImage:"doc.plaintext") }.accessibilityIdentifier("open-report")
                 NavigationLink { DiaryFeedView() } label: { Label("Дневник просмотра",systemImage:"book.pages") }
+                NavigationLink { DiagnosticsView() } label: { Label("Диагностика",systemImage:"stethoscope") }.accessibilityIdentifier("open-diagnostics")
             } footer: { Text("Список историй, серии и итоги обычным текстом: для заметок, друга или ИИ-ассистента.") }
             Section("Оформление") {
                 PreferencePicker(title:"Тема",choices:Theme.allCases,value:store.preference(\.theme),name:{$0.rawValue}).accessibilityIdentifier("theme")

@@ -15,9 +15,8 @@ struct RootView: View {
     var body: some View {
         TabView {
             ShelfView().tabItem { Label("Коллекция",systemImage:"books.vertical.fill") }
-            NavigationStack { TodayView() }.tabItem { Label("Сегодня",systemImage:"sun.max.fill") }
+            NavigationStack { ReleasesView() }.tabItem { Label("Выходы",systemImage:"bell") }.badge(NoticeInbox.unread(store.snapshot))
             NavigationStack { ExploreView() }.tabItem { Label("Обзор",systemImage:"safari.fill") }
-            NavigationStack { ReleasesView() }.tabItem { Label("Серии",systemImage:"bell") }.badge(NoticeInbox.unread(store.snapshot))
             NavigationStack { SettingsView() }.tabItem { Label("Настройки",systemImage:"slider.horizontal.3") }
         }
         .tint(.blue)

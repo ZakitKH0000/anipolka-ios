@@ -247,66 +247,11 @@ struct ExploreView: View {
     }
 }
 
-/// «Сегодня»: what came out, what to continue, what airs today and soon.
-struct TodayView: View {
-    @EnvironmentObject var store: ShelfStore
-    var body: some View {
-        let s = store.snapshot
-        let fresh = s.entries.filter { e in (e.releaseNotices ?? []).contains { !$0.read } || Backlog.available(e) != nil || Airing.aired(e) != nil || AniLibria.ahead(e) != nil }
-            .filter { $0.status == .watching || $0.status == .planned }
-        let today = Airing.calendar(s.entries).first?.items ?? []
-        let continuing = ReleasePlanner.continuing(s.entries, limit: 6).filter { e in !fresh.contains { $0.id == e.id } }
-        let plans = s.entries.compactMap { e in Franchise.catchUp(e, in: s).map { (e, $0) } }.prefix(3)
-        let soon = s.entries.compactMap { e -> (Entry, SequelHint)? in
-            guard let hint = Airing.sequelSuggestion(e, in: s) else { return nil }
-            return (e, hint)
-        }.prefix(4)
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(Date().formatted(.dateTime.weekday(.wide).day().month(.wide)).capitalizedFirst).font(.subheadline).foregroundStyle(.secondary)
-                    Text(fresh.isEmpty && today.isEmpty ? "Сегодня спокойный день" : "Есть что посмотреть").font(.title2.bold())
-                }.listRowBackground(Color.clear)
-            }
-            if !fresh.isEmpty {
-                Section("Вышло новое") { ForEach(fresh) { e in TodayRow2(entry: e, detail: newLine(e)) } }
-            }
-            if !today.isEmpty {
-                Section("Выходит сегодня") {
-                    ForEach(today) { item in
-                        TodayRow2(entry: item.entry, detail: item.at.map { "Серия \(item.episode ?? 0) · \($0.formatted(date: .omitted, time: .shortened)) · \(Airing.countdown($0))" } ?? "По вашему расписанию")
-                    }
-                }
-            }
-            if !continuing.isEmpty {
-                Section("Продолжить") { ForEach(continuing) { e in TodayRow2(entry: e, detail: "Следующая — серия \(e.seasonEpisode + 1)") } }
-            }
-            if !plans.isEmpty {
-                Section("Догнать к выходу") {
-                    ForEach(Array(plans), id: \.0.id) { e, plan in TodayRow2(entry: e, detail: "До «\(plan.target)» \(plan.days) дн. · по \(plan.perDay) в день") }
-                }
-            }
-            if !soon.isEmpty {
-                Section("Продолжения") { ForEach(Array(soon), id: \.0.id) { e, hint in SequelRow(entry: e, hint: hint) } }
-            }
-            if fresh.isEmpty && today.isEmpty && continuing.isEmpty {
-                ContentUnavailableView("Пока пусто", systemImage: "sun.max", description: Text("Добавьте истории в коллекцию или найдите новые во вкладке «Обзор»."))
-            }
-        }
-        .navigationTitle("Сегодня").feedbackScreen("Сегодня")
-    }
-    private func newLine(_ e: Entry) -> String {
-        if let n = (e.releaseNotices ?? []).filter({ !$0.read }).map(\.episode).max() { return "Серия \(n) · новая в источнике" }
-        if let n = Backlog.available(e) { return "Доступно ещё \(n) \(episodesWord(n))" }
-        if let n = AniLibria.ahead(e) { return "В озвучке AniLibria: ещё \(n) \(episodesWord(n))" }
-        if let n = Airing.aired(e) { return "Вышло и не просмотрено: \(n) \(episodesWord(n))" }
-        return ""
-    }
-}
-
-private struct TodayRow2: View {
+/// A title with one line of detail and a play button: used by «Выходы».
+struct QuickRow: View {
     let entry: Entry
     let detail: String
+    var accent = false
     @AppStorage(Lab.inAppPlayer) private var inAppPlayer = true
     @State private var watching: Int?
     @EnvironmentObject var store: ShelfStore
@@ -317,7 +262,7 @@ private struct TodayRow2: View {
                     CoverView(data: entry.coverData, url: entry.coverURL, entryID: entry.id).frame(width: 44, height: 62).clipShape(RoundedRectangle(cornerRadius: 9))
                     VStack(alignment: .leading, spacing: 3) {
                         Text(entry.title).font(.subheadline.weight(.semibold)).lineLimit(2)
-                        Text(detail).font(.caption).foregroundStyle(.secondary)
+                        Text(detail).font(.caption).foregroundStyle(accent ? Color.orange : Color.secondary)
                     }
                 }
             }

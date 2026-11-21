@@ -54,8 +54,8 @@ final class AniPolkaUITests: XCTestCase {
         app.tabBars.buttons["Настройки"].tap(); capture("accessibility-settings")
     }
     func testReleaseInboxAndPublicSourceInspection() {
-        start(); app.tabBars.buttons["Серии"].tap(); capture("release-inbox")
-        app.buttons["release-entry"].tap()
+        start(); app.tabBars.buttons["Выходы"].tap(); capture("release-inbox")
+        app.buttons["release-entry"].firstMatch.tap()
         XCTAssertTrue(app.buttons["edit-entry"].waitForExistence(timeout:5))
         reveal(app.buttons["entry-sources"]); app.buttons["entry-sources"].tap()
         XCTAssertTrue(app.buttons["inspect-source"].waitForExistence(timeout:5)); capture("episode-sources")

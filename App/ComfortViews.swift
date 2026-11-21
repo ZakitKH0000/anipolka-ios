@@ -96,14 +96,20 @@ struct DiarySection: View {
                     }
                 }.accessibilityIdentifier("diary-rate")
             }
-            ForEach(diary.prefix(5)) { note in
-                HStack(alignment: .top) {
-                    Text("Серия \(note.episode - (entry.episodeOffset ?? 0))").font(.subheadline.weight(.semibold))
-                    Text(String(repeating: "★", count: note.rating ?? 0)).foregroundStyle(.yellow)
-                    if !note.text.isEmpty { Text(note.text).font(.subheadline).foregroundStyle(.secondary) }
-                    Spacer()
-                    Text(note.createdAt.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
-                }
+            if !diary.isEmpty {
+                DisclosureGroup("Записи: \(diary.count)") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(diary.prefix(10)) { note in
+                            HStack(alignment: .top) {
+                                Text("Серия \(note.episode - (entry.episodeOffset ?? 0))").font(.subheadline.weight(.semibold))
+                                Text(String(repeating: "★", count: note.rating ?? 0)).foregroundStyle(.yellow)
+                                if !note.text.isEmpty { Text(note.text).font(.subheadline).foregroundStyle(.secondary) }
+                                Spacer()
+                                Text(note.createdAt.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }.padding(.top, 6)
+                }.font(.subheadline)
             }
             if diary.isEmpty { Text("Оцените серию звёздами — получится дневник просмотра.").font(.caption).foregroundStyle(.secondary) }
         }
@@ -247,6 +253,13 @@ struct SeasonDoneCard: View {
         } catch { return error.localizedDescription }
     }
     static func disable() { UserDefaults.standard.removeObject(forKey: bookmarkKey) }
+    /// True when the chosen folder is in iCloud Drive, so copies outlive the app.
+    static var inICloud: Bool {
+        guard let bookmark = UserDefaults.standard.data(forKey: bookmarkKey) else { return false }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale) else { return false }
+        return url.path.contains("Mobile Documents")
+    }
 
     /// Writes «АниПолка-ГГГГ-ММ-ДД.json» when a week has passed and keeps the six newest copies.
     @discardableResult static func runIfDue(_ snapshot: Snapshot, force: Bool = false) -> String? {
@@ -285,6 +298,7 @@ struct AutoBackupRow: View {
                 }
             }
         if on, let last = AutoBackup.last { Text("Последняя копия: \(last.formatted(date: .abbreviated, time: .shortened)). Хранятся шесть последних.").font(.footnote).foregroundStyle(.secondary) }
+        if on, !AutoBackup.inICloud { Text("Папка не в iCloud Drive: при удалении приложения или слёте подписи копии могут пропасть. Лучше выбрать папку в iCloud Drive.").font(.footnote).foregroundStyle(.orange) }
         if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
     }
 }

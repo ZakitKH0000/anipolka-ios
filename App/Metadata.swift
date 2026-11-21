@@ -34,6 +34,12 @@ import ImageIO
     }
     private func metadata(_ url: URL, body: Data? = nil) async throws -> Data {
         let host = url.host ?? ""
+        do { let data = try await metadataRequest(url, body: body); SourceHealth.shared.record(host: host, error: nil); return data }
+        catch is CancellationError { throw CancellationError() }
+        catch { SourceHealth.shared.record(host: host, error: error); throw error }
+    }
+    private func metadataRequest(_ url: URL, body: Data?) async throws -> Data {
+        let host = url.host ?? ""
         guard Date() >= (cooldowns[host] ?? .distantPast) else { throw ShelfError.invalid("Каталог просит подождать. Повторите поиск через минуту.") }
         let wait = max(0, nextRequest.timeIntervalSinceNow)
         nextRequest = Date().addingTimeInterval(wait + 1.0)
@@ -42,11 +48,11 @@ import ImageIO
         var request = URLRequest(url: url); request.timeoutInterval = 20
         request.setValue("AniPolka/1.1 (personal iOS collection)", forHTTPHeaderField: "User-Agent")
         if let body { request.httpMethod = "POST"; request.httpBody = body; request.setValue("application/json",forHTTPHeaderField:"Content-Type") }
-        if url.host == "kitsu.io" { request.setValue("application/vnd.api+json",forHTTPHeaderField:"Accept") }
+        request.setValue(url.host == "kitsu.io" ? "application/vnd.api+json" : "application/json", forHTTPHeaderField: "Accept")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         if http.statusCode == 429 { cooldowns[host] = Date().addingTimeInterval(Double(http.value(forHTTPHeaderField: "Retry-After") ?? "60") ?? 60); throw ShelfError.invalid("Слишком много запросов. Повторите через минуту.") }
-        guard http.statusCode == 200 else { throw ShelfError.invalid("Каталог недоступен (\(http.statusCode)). Можно добавить запись вручную.") }
+        guard http.statusCode == 200 else { throw ShelfError.invalid("\(host) ответил кодом \(http.statusCode)" + (String(data: data.prefix(160), encoding: .utf8).map { ": " + $0 } ?? "")) }
         return data
     }
     func search(_ text: String, catalog: AnimeCatalog = .shikimori) async throws -> [AnimeCandidate] {
@@ -114,6 +120,11 @@ import ImageIO
         return xml
     }
     func sourcePage(_ url: URL) async throws -> String {
+        do { let html = try await sourcePageRequest(url); SourceHealth.shared.record(host: "anivibe.pro", error: nil); return html }
+        catch is CancellationError { throw CancellationError() }
+        catch { SourceHealth.shared.record(host: "anivibe.pro", error: error); throw error }
+    }
+    private func sourcePageRequest(_ url: URL) async throws -> String {
         let delay = max(0,nextSourceRequest.timeIntervalSinceNow)
         nextSourceRequest = Date().addingTimeInterval(delay + 1.2)
         if delay > 0 { try await Task.sleep(for:.seconds(delay)) }

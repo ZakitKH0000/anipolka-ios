@@ -11,7 +11,7 @@
     python scripts/dev_remote.py scroll down | scroll up
     python scripts/dev_remote.py type "Фрирен" | type --return
     python scripts/dev_remote.py back | hide-keyboard
-    python scripts/dev_remote.py tab 1                  # вкладки: 0 Коллекция, 1 Сегодня, 2 Обзор, 3 Серии, 4 Настройки
+    python scripts/dev_remote.py tab 1                  # вкладки: 0 Коллекция, 1 Выходы, 2 Обзор, 3 Настройки
     python scripts/dev_remote.py open anipolka://entry/<UUID>
     python scripts/dev_remote.py backup copy.json       # копия коллекции на компьютер
     python scripts/dev_remote.py restore copy.json      # заменить коллекцию этой копией (осторожно)
@@ -35,7 +35,7 @@ PORT = 8765
 def call(host, token, method, path, query=None, body=None, raw=False):
     url = f"http://{host}:{PORT}{path}"
     if query:
-        url += "?" + urllib.parse.urlencode(query)
+        url += "?" + urllib.parse.urlencode(query, quote_via=urllib.parse.quote)
     request = urllib.request.Request(url, data=body, method=method, headers={"X-Token": token})
     try:
         with urllib.request.urlopen(request, timeout=30) as response:

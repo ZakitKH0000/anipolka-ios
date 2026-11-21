@@ -8,3 +8,9 @@ build/
 *.xcresult/
 local-private/
 __pycache__/
+
+# Android build
+.gradle/
+.kotlin/
+android/local.properties
+*.apk

@@ -27,7 +27,7 @@ private func dayTitle(_ date: Date) -> String {
     return f.string(from: date).capitalized
 }
 
-/// The new-episode inbox, the release calendar and continuations.
+/// «Выходы»: continue watching, new episodes grouped by title, the release calendar, catch-up plans and continuations.
 struct ReleasesView: View {
     @EnvironmentObject var store: ShelfStore
     @EnvironmentObject var assistant: ShelfAssistant
@@ -38,24 +38,45 @@ struct ReleasesView: View {
         store.snapshot.entries.flatMap { e in (e.releaseNotices ?? []).map { (e.id, $0) } }.sorted { $0.1.foundAt > $1.1.foundAt }
     }
     private func entry(_ id: UUID) -> Entry? { store.snapshot.entries.first { $0.id == id } }
+    /// Why a title without unread notices still has something to watch.
+    private func reason(_ e: Entry) -> String? {
+        if let n = Backlog.available(e) { return "Доступно ещё \(n) \(episodesWord(n)) в источнике" }
+        if let n = AniLibria.ahead(e) { return "В озвучке AniLibria: ещё \(n) \(episodesWord(n))" }
+        if let n = Airing.aired(e) { return "Вышло и не просмотрено: \(n) \(episodesWord(n))" }
+        return nil
+    }
 
     var body: some View {
+        let s = store.snapshot
         let all = notices
-        let fresh = all.filter { !$0.1.read }
+        let unread = all.filter { !$0.1.read }
         let read = all.filter { $0.1.read }
-        let sequels = store.snapshot.entries.compactMap { e in Airing.sequelSuggestion(e, in: store.snapshot).map { (e, $0) } }
-        let days = Airing.calendar(store.snapshot.entries)
+        // One row per title: its unread notices, newest title first.
+        let grouped: [(Entry, [ReleaseNotice])] = Dictionary(grouping: unread, by: \.0).compactMap { id, list in entry(id).map { ($0, list.map(\.1).sorted { $0.episode < $1.episode }) } }
+            .sorted { ($0.1.map(\.foundAt).max() ?? .distantPast) > ($1.1.map(\.foundAt).max() ?? .distantPast) }
+        let groupedIDs = Set(grouped.map(\.0.id))
+        let otherFresh = s.entries.filter { ($0.status == .watching || $0.status == .planned) && !groupedIDs.contains($0.id) && reason($0) != nil }
+        let freshIDs = groupedIDs.union(otherFresh.map(\.id))
+        let continuing = ReleasePlanner.continuing(s.entries, limit: 5).filter { !freshIDs.contains($0.id) }
+        let plans = s.entries.compactMap { e in Franchise.catchUp(e, in: s).map { (e, $0) } }.prefix(3)
+        let sequels = s.entries.compactMap { e in Airing.sequelSuggestion(e, in: s).map { (e, $0) } }
+        let days = Airing.calendar(s.entries)
         List {
-            if !fresh.isEmpty {
+            if !grouped.isEmpty || !otherFresh.isEmpty {
                 Section {
-                    ForEach(fresh, id: \.1.id) { entryID, notice in
-                        if let e = entry(entryID) {
-                            NoticeRow(entry: e, notice: notice)
-                                .swipeActions(edge: .leading) { Button("Прочитано", systemImage: "envelope.open") { _ = store.change { NoticeInbox.markRead(&$0, entryID: entryID, noticeID: notice.id) } }.tint(.blue) }
-                                .swipeActions(edge: .trailing) { Button("Удалить", systemImage: "trash", role: .destructive) { _ = store.change { NoticeInbox.remove(&$0, entryID: entryID, noticeID: notice.id) } } }
-                        }
+                    ForEach(grouped, id: \.0.id) { e, list in
+                        GroupedNoticeRow(entry: e, notices: list)
+                            .swipeActions(edge: .leading) { Button("Прочитано", systemImage: "envelope.open") { markAll(e.id, list) }.tint(.blue) }
+                            .swipeActions(edge: .trailing) { Button("Удалить", systemImage: "trash", role: .destructive) { removeAll(e.id, list) } }
                     }
-                } header: { Text("Новые · \(fresh.count)") } footer: { Text("Смахните вправо — прочитано, влево — удалить. Отметка «+1» в карточке сама убирает серии, которые вы посмотрели.") }
+                    ForEach(otherFresh) { e in QuickRow(entry: e, detail: reason(e) ?? "") }
+                } header: { Text("Новые серии · \(grouped.count + otherFresh.count)") } footer: {
+                    Text("Несколько серий одного тайтла собраны в одну строку. Смахните вправо — прочитано, влево — удалить. Отметка «+1» сама убирает просмотренные серии.")
+                }
+            }
+
+            if !continuing.isEmpty {
+                Section("Продолжить") { ForEach(continuing) { e in QuickRow(entry: e, detail: "Следующая — серия \(e.seasonEpisode + 1)") } }
             }
 
             Section {
@@ -77,38 +98,31 @@ struct ReleasesView: View {
                 let items = days.indices.contains(day) ? days[day].items : []
                 if items.isEmpty { Text("В этот день ничего не отмечено").font(.subheadline).foregroundStyle(.secondary) }
                 ForEach(items) { item in
-                    NavigationLink { EntryDetail(id: item.entry.id) } label: {
-                        HStack(spacing: 14) {
-                            CoverView(data: item.entry.coverData, url: item.entry.coverURL, entryID: item.entry.id).frame(width: 44, height: 62).clipShape(RoundedRectangle(cornerRadius: 9))
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(item.entry.title).font(.headline).lineLimit(2)
-                                if let at = item.at {
-                                    Text([item.episode.map { "Серия \($0)" }, at.formatted(date: .omitted, time: .shortened), Airing.countdown(at)].compactMap { $0 }.joined(separator: " · "))
-                                        .font(.subheadline).foregroundStyle(.orange)
-                                } else {
-                                    Text("По вашему расписанию · следующая \(item.entry.episode + 1)").font(.subheadline).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
+                    QuickRow(entry: item.entry, detail: calendarDetail(item), accent: item.at != nil)
                 }
-            } header: { Text("Календарь выхода") }
+            } header: { Text(day == 0 ? "Сегодня выходит" : "Календарь выхода") }
+
+            if !plans.isEmpty {
+                Section("Догнать к выходу") {
+                    ForEach(Array(plans), id: \.0.id) { e, plan in QuickRow(entry: e, detail: "До «\(plan.target)» \(plan.days) дн. · осталось \(plan.remaining) · по \(plan.perDay) в день") }
+                }
+            }
 
             if !sequels.isEmpty {
-                Section("Продолжения") {
-                    ForEach(sequels, id: \.0.id) { e, hint in SequelRow(entry: e, hint: hint) }
-                }
+                Section("Продолжения") { ForEach(sequels, id: \.0.id) { e, hint in SequelRow(entry: e, hint: hint) } }
             }
 
             Section {
                 Button { Task { await assistant.checkReleases(); await assistant.refreshAiring(force: true) } } label: {
-                    HStack { Label("Проверить сейчас", systemImage: "arrow.clockwise"); if assistant.checking { Spacer(); ProgressView() } }
+                    HStack { Label("Проверить сейчас", systemImage: "arrow.clockwise"); if assistant.checking || assistant.refreshingAiring { Spacer(); ProgressView() } }
                 }.disabled(assistant.checking).accessibilityIdentifier("check-releases")
                 NavigationLink { WeekView() } label: { Label("Неделя: выходы и премьеры", systemImage: "calendar") }.accessibilityIdentifier("open-week")
+                NavigationLink { DiagnosticsView() } label: { Label("Диагностика источников", systemImage: "stethoscope") }
                 if let message = assistant.message { Text(message).font(.footnote).foregroundStyle(.secondary) }
-            } footer: { Text("Фоновое обновление запускает iOS. Даты выхода берутся из Shikimori: это время показа в Японии или Китае, озвучка обычно выходит позже.") }
+                if !assistant.sourcesReport.isEmpty { Text(assistant.sourcesReport).font(.footnote).foregroundStyle(.secondary).accessibilityIdentifier("sources-report") }
+            } footer: { Text("Фоновое обновление запускает iOS; при открытии приложения проверка запускается сама. Время из Shikimori и AniList — показ в Китае или Японии, озвучка обычно позже.") }
 
-            if all.isEmpty {
+            if all.isEmpty && otherFresh.isEmpty {
                 Section { ContentUnavailableView("Новые серии появятся здесь", systemImage: "play.rectangle.on.rectangle", description: Text("Откройте историю → «Источники новых серий» и выберите страницу, сезон и озвучку AniVibe.")) }
             }
 
@@ -124,7 +138,7 @@ struct ReleasesView: View {
                 } header: { Text("Просмотренные") } footer: { Text("Просмотренные уведомления удаляются сами через \(NoticeInbox.keepReadDays) дней.") }
             }
 
-            let connected = store.snapshot.entries.filter { !($0.subscriptions ?? []).isEmpty }
+            let connected = s.entries.filter { !($0.subscriptions ?? []).isEmpty }
             if !connected.isEmpty {
                 Section("Подключённые истории") {
                     ForEach(connected) { entry in
@@ -139,12 +153,12 @@ struct ReleasesView: View {
                 }
             }
         }
-        .navigationTitle("Новые серии").feedbackScreen("Серии")
+        .navigationTitle("Выходы").feedbackScreen("Выходы")
         .refreshable { await assistant.checkReleases(); await assistant.refreshAiring(force: true) }
         .toolbar {
             if !all.isEmpty {
                 Menu {
-                    if !fresh.isEmpty { Button("Прочитать все (\(fresh.count))", systemImage: "checkmark.circle") { _ = store.change { NoticeInbox.markAllRead(&$0) } } }
+                    if !unread.isEmpty { Button("Прочитать все (\(unread.count))", systemImage: "checkmark.circle") { _ = store.change { NoticeInbox.markAllRead(&$0) } } }
                     if !read.isEmpty { Button("Удалить просмотренные", systemImage: "trash") { _ = store.change { NoticeInbox.removeRead(&$0) } } }
                     Button("Удалить все уведомления", systemImage: "trash.slash", role: .destructive) { confirmClear = true }
                 } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("Действия с уведомлениями").accessibilityIdentifier("notice-actions")
@@ -153,6 +167,63 @@ struct ReleasesView: View {
         .confirmationDialog("Удалить все уведомления?", isPresented: $confirmClear, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) { _ = store.change { NoticeInbox.removeAll(&$0) } }
         } message: { Text("Список найденных серий очистится. Прогресс, источники и коллекция не изменятся; новые серии продолжат появляться.") }
+    }
+    private func calendarDetail(_ item: CalendarItem) -> String {
+        guard let at = item.at else { return "По вашему расписанию · следующая \(item.entry.seasonEpisode + 1)" }
+        var parts: [String] = []
+        if let episode = item.episode { parts.append("Серия \(episode)") }
+        parts.append(at.formatted(date: .omitted, time: .shortened))
+        parts.append(Airing.countdown(at))
+        return parts.joined(separator: " · ")
+    }
+    private func markAll(_ id: UUID, _ list: [ReleaseNotice]) {
+        _ = store.change { s in for n in list { NoticeInbox.markRead(&s, entryID: id, noticeID: n.id) } }
+    }
+    private func removeAll(_ id: UUID, _ list: [ReleaseNotice]) {
+        _ = store.change { s in for n in list { NoticeInbox.remove(&s, entryID: id, noticeID: n.id) } }
+    }
+}
+
+/// All unread episodes of one title in one row: «Серии 32–34 · 3 новых», the dub and when it was found.
+struct GroupedNoticeRow: View {
+    let entry: Entry
+    let notices: [ReleaseNotice]
+    @EnvironmentObject var store: ShelfStore
+    @Environment(\.openURL) private var openURL
+    @AppStorage(Lab.inAppPlayer) private var inAppPlayer = true
+    @State private var watching: Int?
+    var body: some View {
+        let first = notices.first, last = notices.last
+        HStack(spacing: 14) {
+            NavigationLink { EntryDetail(id: entry.id) } label: {
+                HStack(spacing: 14) {
+                    CoverView(data: entry.coverData, url: entry.coverURL, entryID: entry.id).frame(width: 44, height: 62).clipShape(RoundedRectangle(cornerRadius: 9))
+                        .overlay(alignment: .topLeading) { Circle().fill(.blue).frame(width: 12, height: 12).overlay(Circle().stroke(Color(.secondarySystemGroupedBackground), lineWidth: 2)).offset(x: -5, y: -5).accessibilityLabel("Не прочитано") }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        if let first, let last {
+                            Text(first.episode == last.episode ? "Серия \(last.episode)" : "Серии \(first.episode)–\(last.episode) · \(notices.count) \(newWord(notices.count))").font(.subheadline)
+                            Text([last.sourceLabel, agoText(last.foundAt)].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                }
+            }.accessibilityIdentifier("release-entry")
+            Button("Смотреть") { watch() }.buttonStyle(.bordered).controlSize(.small).accessibilityIdentifier("watch-notice")
+        }
+        .fullScreenCover(item: Binding(get: { watching.map { WatchEpisode(number: $0) } }, set: { watching = $0?.number })) { item in
+            WatchView(entryID: entry.id, episode: item.number).environmentObject(store)
+        }
+    }
+    private func newWord(_ n: Int) -> String {
+        let tens = n % 100, ones = n % 10
+        if (11...14).contains(tens) { return "новых" }
+        return ones == 1 ? "новая" : "новых"
+    }
+    /// Starts from the first episode not yet watched; the site opens outside when built-in viewing is off.
+    private func watch() {
+        let next = max(entry.seasonEpisode + 1, notices.first?.episode ?? entry.seasonEpisode + 1)
+        if inAppPlayer, WatchTarget.url(for: entry, episode: next) != nil { watching = next }
+        else if let notice = notices.first(where: { $0.episode >= next }) ?? notices.last, let url = validWebURL(notice.url) { openURL(url) }
     }
 }
 

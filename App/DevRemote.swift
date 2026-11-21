@@ -120,6 +120,7 @@ import Network
                     return item
                 },
                 "unread": NoticeInbox.unread(s), "count": s.entries.count, "error": store.error ?? "", "undo": store.undoToken != nil,
+                "sources": ShelfAssistant.lastSourcesReport,
             ])
         case ("GET", "/screenshot"):
             guard let window = Self.keyWindow else { return json(["error": "Нет окна"], status: 500) }
@@ -196,7 +197,7 @@ import Network
                 return json(["ok": store.change { $0 = copy }, "count": copy.entries.count])
             } catch { return json(["error": error.localizedDescription], status: 400) }
         default:
-            return json(["error": "Неизвестная команда", "commands": ["GET /ping", "GET /state", "GET /screenshot", "GET /tree", "POST /tap?label=", "POST /scroll?dir=down|up", "POST /type?text=", "POST /hide-keyboard", "POST /back", "POST /tab?index=0…4", "POST /open?url=", "GET /feedback", "GET /feedback-image?id=", "POST /feedback-done?id=", "GET /backup", "POST /restore?confirm=yes"]], status: 404)
+            return json(["error": "Неизвестная команда", "commands": ["GET /ping", "GET /state", "GET /screenshot", "GET /tree", "POST /tap?label=", "POST /scroll?dir=down|up", "POST /type?text=", "POST /hide-keyboard", "POST /back", "POST /tab?index=0…3", "POST /open?url=", "GET /feedback", "GET /feedback-image?id=", "POST /feedback-done?id=", "GET /backup", "POST /restore?confirm=yes"]], status: 404)
         }
     }
 

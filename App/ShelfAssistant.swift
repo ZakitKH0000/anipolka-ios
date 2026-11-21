@@ -7,6 +7,9 @@ import UserNotifications
     @Published private(set) var checking = false
     @Published private(set) var findingCovers = false
     @Published private(set) var refreshingAiring = false
+    /// What the extra sources answered on the last refresh: counts or the error text.
+    @Published private(set) var sourcesReport = ""
+    static var lastSourcesReport = ""
     @Published var message: String?
     private let store: ShelfStore
     private let network: NetworkService
@@ -143,12 +146,18 @@ import UserNotifications
         if force || !ids.isEmpty {
             let active = Array(Set(store.snapshot.entries.filter { ($0.status == .watching || $0.status == .planned) && $0.airing != nil }.compactMap(\.sourceID)))
             var next: [Int: AniList.Next] = [:]
+            var report: [String] = []
             var position = 0
             while position < active.count {
                 let chunk = Array(active[position..<min(position + 50, active.count)]); position += 50
-                if let found = try? await network.aniList(chunk) { next.merge(found) { a, _ in a } }
+                do { next.merge(try await network.aniList(chunk)) { a, _ in a } }
+                catch { report.append("AniList: ошибка — \(error.localizedDescription)") }
             }
-            let libria = (try? await network.libriaSchedule()) ?? [:]
+            if report.isEmpty { report.append("AniList: время серий для \(next.count) из \(active.count)") }
+            var libria: [Int: LibriaInfo] = [:]
+            do { libria = try await network.libriaSchedule(); report.append("AniLibria: в расписании \(libria.count), из коллекции \(active.filter { libria[$0] != nil }.count)") }
+            catch { report.append("AniLibria: ошибка — \(error.localizedDescription)") }
+            sourcesReport = report.joined(separator: " · "); Self.lastSourcesReport = sourcesReport
             var dubbed: [(Entry, Int)] = []
             _ = store.change { state in
                 for i in state.entries.indices {

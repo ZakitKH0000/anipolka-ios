@@ -50,24 +50,27 @@ struct EntryDetail: View {
                                 Label("Смотреть серию \(e.seasonEpisode + 1) в АниПолке",systemImage:"play.fill").font(.headline).frame(maxWidth:.infinity,minHeight:50)
                             }.buttonStyle(.borderedProminent).accessibilityIdentifier("watch-in-app")
                         }
+                        ResumeCard(entry:e)
                         AiringCard(entry:e)
                         CatchUpCard(entry:e)
-                        AnimeInfoSection(entry:e)
                         FranchiseSection(entry:e) { newID in withAnimation(.snappy) { shownID = newID } }
                         if Franchise.info(e, in: store.snapshot) == nil, let hint = Airing.sequelSuggestion(e, in: store.snapshot) {
                             SequelRow(entry:e,hint:hint).padding(12).background(.thinMaterial,in:RoundedRectangle(cornerRadius:22,style:.continuous))
                         }
-                        ResumeCard(entry:e)
+                        CollapsibleBlock(title:"О тайтле",systemImage:"info.circle",key:"info") { AnimeInfoSection(entry:e) }
                         DiarySection(entry:e)
-                        WatchLinksSection(entry:e)
-                        RelatedPartsSection(entry:e)
-                        NavigationLink { TitleHistoryView(id:e.id) } label: { Label("История просмотра",systemImage:"clock.arrow.circlepath") }.font(.subheadline).accessibilityIdentifier("entry-history")
+                        CollapsibleBlock(title:"Ссылки, связанные части, история",systemImage:"link",key:"links") {
+                            WatchLinksSection(entry:e)
+                            RelatedPartsSection(entry:e)
+                            ForEach(e.subscriptions ?? []) { source in
+                                VStack(alignment:.leading,spacing:4) { Text(source.label).font(.subheadline.bold()); if let episode = source.lastEpisode { Text("В источнике доступна серия \(episode)").font(.subheadline).foregroundStyle(.secondary) }; if let error = source.error { Text(error).font(.caption).foregroundStyle(.orange) } }
+                            }
+                            NavigationLink { TitleHistoryView(id:e.id) } label: { Label("История просмотра",systemImage:"clock.arrow.circlepath") }.font(.subheadline).accessibilityIdentifier("entry-history")
+                        }
                         Button("Источники новых серий",systemImage:"bell.badge") { showSources = true }.buttonStyle(.bordered).controlSize(.large).accessibilityIdentifier("entry-sources")
                         if let discovery = e.coverDiscovery { Text(discovery.message).font(.footnote).foregroundStyle(.secondary); if discovery.needsChoice { Button("Выбрать обложку") { editing = true } } }
                         if e.coverData != nil, e.coverDiscovery != nil { Label("Обложка сохранена для офлайн-просмотра",systemImage:"checkmark.circle").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("cached-auto-cover") }
-                        ForEach(e.subscriptions ?? []) { source in
-                            VStack(alignment:.leading,spacing:4) { Text(source.label).font(.subheadline.bold()); if let episode = source.lastEpisode { Text("В источнике доступна серия \(episode)").font(.subheadline).foregroundStyle(.secondary) }; if let error = source.error { Text(error).font(.caption).foregroundStyle(.orange) } }
-                        }
+                        if (e.subscriptions ?? []).contains(where: { $0.error != nil }) { Label("Источник новых серий недоступен — подробности в блоке «Ссылки»",systemImage:"exclamationmark.triangle").font(.caption).foregroundStyle(.orange) }
                         if !e.note.isEmpty { VStack(alignment:.leading,spacing:8) { Text("Заметка").font(.headline); Text(e.note).textSelection(.enabled) } }
                         if let url = validWebURL(e.watchURL) { Link(destination:url) { Label("Открыть страницу просмотра",systemImage:"play.rectangle").frame(maxWidth:.infinity,minHeight:48) }.buttonStyle(.borderedProminent) }
                         if let url = validWebURL(e.sourceURL) { Link("Карточка произведения: \(url.host?.contains("kitsu") == true ? "Kitsu" : "Shikimori") ↗",destination:url).font(.footnote) }
@@ -75,6 +78,10 @@ struct EntryDetail: View {
                         Button("Удалить из коллекции",role:.destructive) { deleteConfirmation = true }.frame(minHeight:44)
                     }.padding(20)
                 }.background(CoverAtmosphere(data:e.coverData)).tint(CoverPalette.accent(e.coverData) ?? .blue)
+                    .overlay(alignment:.top) {
+                        LinearGradient(colors:[Color.black.opacity(0.55),Color.black.opacity(0.25),.clear],startPoint:.top,endPoint:.bottom)
+                            .frame(height:70).ignoresSafeArea(.container,edges:.top).allowsHitTesting(false)
+                    }
                     .confirmationDialog("Начать «\(e.title)» заново?",isPresented:$confirmRewatch,titleVisibility:.visible) {
                         Button("Начать пересмотр") { var copy = e; copy.startRewatch(); _ = store.save(copy) }
                     } message: { Text("Номер серии станет 0, статус — «Смотрю». Сколько серий было в прошлый раз, сохранится в карточке.") }
@@ -93,6 +100,36 @@ struct EntryDetail: View {
     }
 }
 struct WatchEpisode: Identifiable { let number: Int; var id: Int { number } }
+
+/// A card block that folds to one line; whether it is open is remembered for all titles.
+struct CollapsibleBlock<Content: View>: View {
+    let title: String
+    let systemImage: String
+    @AppStorage private var open: Bool
+    let content: () -> Content
+    init(title: String, systemImage: String, key: String, openByDefault: Bool = false, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title; self.systemImage = systemImage; self.content = content
+        _open = AppStorage(wrappedValue: openByDefault, "card.block." + key)
+    }
+    var body: some View {
+        VStack(alignment:.leading,spacing:14) {
+            Button { withAnimation(.snappy) { open.toggle() } } label: {
+                HStack {
+                    Label(title,systemImage:systemImage).font(.headline).foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName:"chevron.down").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).rotationEffect(.degrees(open ? 0 : -90))
+                }
+                .padding(.horizontal,16).frame(minHeight:50)
+                .background(.thinMaterial,in:RoundedRectangle(cornerRadius:22,style:.continuous))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(open ? "развёрнуто" : "свёрнуто")
+            .accessibilityIdentifier("block-" + title)
+            if open { content() }
+        }
+    }
+}
 func validWebURL(_ string: String) -> URL? {
     guard let url = URL(string:string), ["http","https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else { return nil }; return url
 }
@@ -115,11 +152,32 @@ struct EntryEditor: View {
     @State private var aliasesText = ""
     @State private var related: Set<UUID> = []
     @State private var pickingRelated = false
+    @State private var renaming = false
+    @State private var renameNote: String?
+    /// Takes the Russian title from Shikimori; the old name stays among «Другие названия». Applied only on «Готово».
+    private func renameFromShikimori() async {
+        guard let id = entry.sourceID else { return }
+        renaming = true; defer { renaming = false }
+        do {
+            guard let c = try await network.shikimoriCandidate(id: id) else { renameNote = "Shikimori не нашёл этот тайтл."; return }
+            let old = entry.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard c.title != old else { renameNote = "Название уже совпадает с Shikimori."; return }
+            entry.title = c.title
+            aliasesText = Aliases.merge(Aliases.parse(aliasesText), adding: [old] + c.names, except: [c.title]).joined(separator: "\n")
+            renameNote = "Было: «\(old)». Старое название сохранится в «Других названиях» после «Готово»."
+        } catch { renameNote = "Не удалось связаться с Shikimori: \(error.localizedDescription)" }
+    }
     var body: some View {
         NavigationStack {
             Form {
                 Section("Название и прогресс") {
                     TextField("Привычное название",text:$entry.title,axis:.vertical).accessibilityIdentifier("entry-title")
+                    if entry.sourceID != nil {
+                        Button { Task { await renameFromShikimori() } } label: {
+                            HStack { Label("Обновить название из Shikimori",systemImage:"textformat"); if renaming { Spacer(); ProgressView() } }
+                        }.disabled(renaming).accessibilityIdentifier("rename-from-shikimori")
+                        if let renameNote { Text(renameNote).font(.footnote).foregroundStyle(.secondary) }
+                    }
                     HStack { Text("Последняя серия"); Spacer(); TextField("0",value:$entry.episode,format:.number.grouping(.never)).keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(minWidth:70).accessibilityIdentifier("entry-episode") }
                     Toggle("Указывать сезон",isOn:$hasSeason).onChange(of:hasSeason) { _, value in entry.season = value ? (entry.season ?? 1) : nil }
                     if hasSeason { Stepper("Сезон \(entry.season ?? 1)",value:Binding(get:{entry.season ?? 1},set:{entry.season = $0}),in:1...10000) }
