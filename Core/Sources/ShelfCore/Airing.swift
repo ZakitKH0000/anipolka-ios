@@ -25,8 +25,10 @@ public struct AiringInfo: Codable, Equatable {
     /// Original (Japanese or Chinese) broadcast time; dubs usually follow later.
     public var nextEpisodeAt: Date?
     public var sequel: SequelHint?
-    public init(checkedAt: Date, status: String, episodes: Int? = nil, episodesAired: Int? = nil, nextEpisodeAt: Date? = nil, sequel: SequelHint? = nil) {
-        self.checkedAt = checkedAt; self.status = status; self.episodes = episodes; self.episodesAired = episodesAired; self.nextEpisodeAt = nextEpisodeAt; self.sequel = sequel
+    /// Shikimori franchise key, shared by every season of the story.
+    public var franchise: String?
+    public init(checkedAt: Date, status: String, episodes: Int? = nil, episodesAired: Int? = nil, nextEpisodeAt: Date? = nil, sequel: SequelHint? = nil, franchise: String? = nil) {
+        self.checkedAt = checkedAt; self.status = status; self.episodes = episodes; self.episodesAired = episodesAired; self.nextEpisodeAt = nextEpisodeAt; self.sequel = sequel; self.franchise = franchise
     }
 }
 
@@ -50,7 +52,7 @@ public enum Airing {
 
     /// GraphQL request body for up to 50 titles; the answer is read by `parse`.
     public static func query(_ ids: [Int]) -> Data {
-        let q = "query($ids: String!) { animes(ids: $ids, limit: 50) { id status episodes episodesAired nextEpisodeAt related { relationKind anime { id name russian status kind airedOn { date } poster { mainUrl } } } } }"
+        let q = "query($ids: String!) { animes(ids: $ids, limit: 50) { id franchise status episodes episodesAired nextEpisodeAt related { relationKind anime { id name russian status kind airedOn { date } poster { mainUrl } } } } }"
         let body: [String: Any] = ["query": q, "variables": ["ids": ids.prefix(50).map(String.init).joined(separator: ",")]]
         return (try? JSONSerialization.data(withJSONObject: body)) ?? Data()
     }
@@ -88,7 +90,8 @@ public enum Airing {
             let episodes = int(a["episodes"]).flatMap { $0 > 0 ? $0 : nil }
             let aired = int(a["episodesAired"]).flatMap { $0 > 0 ? $0 : nil }
             result[id] = AiringInfo(checkedAt: now, status: status, episodes: episodes, episodesAired: aired,
-                                    nextEpisodeAt: (status == ongoing || status == anons) ? next : nil, sequel: sequel)
+                                    nextEpisodeAt: (status == ongoing || status == anons) ? next : nil, sequel: sequel,
+                                    franchise: (a["franchise"] as? String).flatMap { $0.isEmpty || $0.count > 200 ? nil : $0 })
         }
         return result
     }
@@ -109,6 +112,7 @@ public enum Airing {
     /// Saves fresh data; empty release days are filled from the broadcast weekday.
     public static func apply(_ e: Entry, _ info: AiringInfo, calendar: Calendar = .current) -> Entry {
         var next = e; next.airing = info
+        if let key = info.franchise { next.franchise = key }
         if (e.releaseDays ?? []).isEmpty, info.status == ongoing, let at = info.nextEpisodeAt {
             next.releaseDays = [ReleasePlanner.weekday(of: at, calendar: calendar)]
         }
@@ -178,7 +182,7 @@ public enum Airing {
     public static func aired(_ e: Entry) -> Int? {
         guard let info = e.airing, e.status != .completed else { return nil }
         let total = info.status == released ? (info.episodes ?? info.episodesAired) : info.episodesAired
-        guard let count = total.map({ $0 - e.episode }), (1...9999).contains(count) else { return nil }
+        guard let count = total.map({ $0 - e.seasonEpisode }), (1...9999).contains(count) else { return nil }
         return count
     }
 
@@ -244,7 +248,7 @@ public enum NoticeInbox {
         guard let notices = entry.releaseNotices, !notices.isEmpty else { return entry }
         let cutoff = now.addingTimeInterval(-Double(keepReadDays) * 86400)
         let next = notices.map { n -> ReleaseNotice in
-            var n = n; if !n.read && n.episode <= entry.episode { n.read = true }; return n
+            var n = n; if !n.read && n.episode <= entry.seasonEpisode { n.read = true }; return n
         }.filter { !$0.read || $0.foundAt > cutoff }
         guard next != notices else { return entry }
         var e = entry; e.releaseNotices = next; return e

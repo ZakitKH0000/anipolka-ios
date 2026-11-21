@@ -41,8 +41,8 @@ public enum Backlog {
     /// Episodes available in connected sources beyond the user's own mark.
     public static func available(_ entry: Entry) -> Int? {
         guard entry.status == .watching || entry.status == .planned, let latest = latest(entry),
-              latest > entry.episode, latest - entry.episode <= plausibleGap else { return nil }
-        return latest - entry.episode
+              latest > entry.seasonEpisode, latest - entry.seasonEpisode <= plausibleGap else { return nil }
+        return latest - entry.seasonEpisode
     }
 }
 

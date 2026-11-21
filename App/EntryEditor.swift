@@ -9,7 +9,12 @@ struct EntryDetail: View {
     @State private var deleteConfirmation = false
     @State private var showSources = false
     @State private var confirmRewatch = false
-    private var entry: Entry? { store.snapshot.entries.first { $0.id == id } }
+    /// Another season of the same franchise chosen in the season tabs.
+    @State private var shownID: UUID?
+    @State private var watching: Int?
+    @AppStorage(Lab.inAppPlayer) private var inAppPlayer = true
+    private var currentID: UUID { shownID ?? id }
+    private var entry: Entry? { store.snapshot.entries.first { $0.id == currentID } }
     var body: some View {
         Group {
             if let e = entry {
@@ -18,6 +23,7 @@ struct EntryDetail: View {
                         CoverView(data:e.coverData,url:e.coverURL,entryID:e.id).frame(height:330).clipShape(RoundedRectangle(cornerRadius:24))
                         Text(e.title).font(.largeTitle.bold()).fixedSize(horizontal:false,vertical:true)
                         if !e.originalTitle.isEmpty && e.originalTitle != e.title { Text(e.originalTitle).foregroundStyle(.secondary) }
+                        FranchiseSeasonsStrip(entry:e) { newID in withAnimation(.snappy) { shownID = newID } }
                         HStack {
                             VStack(alignment:.leading,spacing:5) { Text("Последняя просмотренная").font(.subheadline).foregroundStyle(.secondary); Text("Серия \(e.episode)").font(.title.bold()).contentTransition(.numericText(value:Double(e.episode))).animation(.snappy,value:e.episode); if let season = e.season { Text("Сезон \(season)") }; if let pass = e.passTitle { Text(pass).font(.caption).foregroundStyle(.secondary) } }
                             Spacer(); IncrementButton(entry:e)
@@ -36,7 +42,15 @@ struct EntryDetail: View {
                         if let aliases = e.aliases, !aliases.isEmpty {
                             DisclosureGroup("Другие названия: \(aliases.count)") { VStack(alignment:.leading,spacing:4) { ForEach(aliases,id:\.self) { Text($0).font(.subheadline).textSelection(.enabled) } }.frame(maxWidth:.infinity,alignment:.leading) }.font(.subheadline)
                         }
+                        NextSeasonCard(entry:e) { newID in withAnimation(.snappy) { shownID = newID } }
+                        if inAppPlayer, WatchTarget.available(e) {
+                            Button { watching = e.seasonEpisode + 1 } label: {
+                                Label("Смотреть серию \(e.seasonEpisode + 1) в АниПолке",systemImage:"play.fill").font(.headline).frame(maxWidth:.infinity,minHeight:50)
+                            }.buttonStyle(.borderedProminent).accessibilityIdentifier("watch-in-app")
+                        }
                         AiringCard(entry:e)
+                        CatchUpCard(entry:e)
+                        FranchiseSection(entry:e) { newID in withAnimation(.snappy) { shownID = newID } }
                         if let hint = Airing.sequelSuggestion(e, in: store.snapshot) {
                             SequelRow(entry:e,hint:hint).padding(12).background(.thinMaterial,in:RoundedRectangle(cornerRadius:22,style:.continuous))
                         }
@@ -62,14 +76,19 @@ struct EntryDetail: View {
                     } message: { Text("Номер серии станет 0, статус — «Смотрю». Сколько серий было в прошлый раз, сохранится в карточке.") }
                     .toolbar { Button("Изменить") { editing = true }.accessibilityIdentifier("edit-entry") }
                     .sheet(isPresented:$editing) { EntryEditor(entry:e) {} }
-                    .sheet(isPresented:$showSources) { EntrySourcesView(entryID:id) }
+                    .sheet(isPresented:$showSources) { EntrySourcesView(entryID:currentID) }
+                    .fullScreenCover(item:Binding(get:{ watching.map { WatchEpisode(number:$0) } },set:{ watching = $0?.number })) { item in
+                        WatchView(entryID:currentID,episode:item.number).environmentObject(store)
+                    }
+                    .feedbackScreen("Карточка: \(e.title)")
                     .confirmationDialog("Удалить «\(e.title)» и прогресс?",isPresented:$deleteConfirmation,titleVisibility:.visible) {
-                        Button("Удалить запись",role:.destructive) { if store.change({ $0.entries.removeAll { $0.id == id } }) { dismiss() } }
+                        Button("Удалить запись",role:.destructive) { let removed = currentID; if store.change({ $0.entries.removeAll { $0.id == removed } }) { if shownID != nil { shownID = nil } else { dismiss() } } }
                     } message: { Text("Вернуть запись можно из заранее сохранённой резервной копии.") }
             } else { ContentUnavailableView("Запись удалена",systemImage:"books.vertical") }
         }.navigationBarTitleDisplayMode(.inline)
     }
 }
+struct WatchEpisode: Identifiable { let number: Int; var id: Int { number } }
 func validWebURL(_ string: String) -> URL? {
     guard let url = URL(string:string), ["http","https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else { return nil }; return url
 }

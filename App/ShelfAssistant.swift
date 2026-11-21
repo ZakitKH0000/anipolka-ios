@@ -139,6 +139,16 @@ import UserNotifications
                 for i in state.entries.indices { if let id = state.entries[i].sourceID, let info = found[id] { state.entries[i] = Airing.apply(state.entries[i], info) } }
             }
         }
+        // Parts of every franchise in the collection, for the season tabs and the next-season prompt.
+        let keys = Array(Set(store.snapshot.entries.compactMap(\.franchise))).sorted()
+        for key in keys.prefix(60) {
+            let previous = store.snapshot.franchises?.first { $0.key == key }
+            guard force || Franchise.needsRefresh(previous), let info = try? await network.franchise(key, previous: previous) else { continue }
+            _ = store.change { state in
+                var list = (state.franchises ?? []).filter { $0.key != key }
+                list.append(info); state.franchises = list
+            }
+        }
     }
     func scheduleBackground() {
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier:Self.refreshID)

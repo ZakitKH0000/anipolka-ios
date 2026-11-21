@@ -31,8 +31,10 @@ public struct Preferences: Codable, Equatable {
     public var catalogUpdates = true
     /// A local notification at the announced broadcast time of the next episode.
     public var airingReminders = false
+    /// One card per franchise on the main screen (the season being watched stands for the others).
+    public var groupFranchises = true
     public init() {}
-    private enum CodingKeys: String, CodingKey { case theme, layout, sort, showContinue, haptics, wifiOnly, automaticCovers, releaseNotifications, backgroundChecks, dailyDigest, digestMinutes, appLock, shelves, pureBlack, favoriteDubs, catalogUpdates, airingReminders }
+    private enum CodingKeys: String, CodingKey { case theme, layout, sort, showContinue, haptics, wifiOnly, automaticCovers, releaseNotifications, backgroundChecks, dailyDigest, digestMinutes, appLock, shelves, pureBlack, favoriteDubs, catalogUpdates, airingReminders, groupFranchises }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy:CodingKeys.self)
         theme = try c.decodeIfPresent(Theme.self,forKey:.theme) ?? .dark
@@ -52,6 +54,7 @@ public struct Preferences: Codable, Equatable {
         favoriteDubs = Array((try c.decodeIfPresent([String].self,forKey:.favoriteDubs) ?? []).filter { !$0.isEmpty && $0.count <= 80 }.prefix(Dubs.limit))
         catalogUpdates = try c.decodeIfPresent(Bool.self,forKey:.catalogUpdates) ?? true
         airingReminders = try c.decodeIfPresent(Bool.self,forKey:.airingReminders) ?? false
+        groupFranchises = try c.decodeIfPresent(Bool.self,forKey:.groupFranchises) ?? true
     }
 }
 public struct Entry: Codable, Identifiable, Equatable {
@@ -95,6 +98,10 @@ public struct Entry: Codable, Identifiable, Equatable {
     public var airing: AiringInfo? = nil
     /// Continuation the user chose not to add.
     public var dismissedSequelID: Int? = nil
+    /// Shikimori franchise key shared by all seasons, films and specials of one story.
+    public var franchise: String? = nil
+    /// Through-season numbering: episodes of earlier seasons; `episode - episodeOffset` is the number inside this season.
+    public var episodeOffset: Int? = nil
     public init(title: String, episode: Int = 0) { self.title = title; self.episode = episode }
     public var displayTitle: String { title + (favorite && !title.contains("⭐") && !title.contains("★") ? " ★" : "") }
     public var subtitle: String { (season.map { "Сезон \($0) · " } ?? "") + "Последняя серия: \(episode)" }
@@ -106,6 +113,8 @@ public struct Snapshot: Codable, Equatable {
     public var preferences = Preferences()
     /// Episode marks made in the app; used only for local statistics.
     public var history: [WatchMark]? = nil
+    /// Parts of the franchises in the collection, from Shikimori.
+    public var franchises: [FranchiseInfo]? = nil
     public init() {}
     public func validated() throws -> Snapshot {
         guard format == "AniPolka", version == 1 else { throw ShelfError.invalid("Неподдерживаемый формат резервной копии.") }
@@ -128,6 +137,7 @@ public struct Snapshot: Codable, Equatable {
                 guard a.status.count <= 20, (a.episodes ?? 0) >= 0, (a.episodes ?? 0) <= 100_000, (a.episodesAired ?? 0) >= 0, (a.episodesAired ?? 0) <= 100_000, okSequel
                 else { throw ShelfError.invalid("Некорректные данные каталога в записи «\(e.title.prefix(60))».") }
             }
+            guard (e.franchise?.count ?? 0) <= 200, e.episodeOffset == nil || (0...1_000_000).contains(e.episodeOffset!) else { throw ShelfError.invalid("Некорректная нумерация сезона в записи «\(e.title.prefix(60))».") }
             guard (e.subscriptions?.count ?? 0) <= 20, (e.releaseNotices?.count ?? 0) <= 100 else { throw ShelfError.invalid("Слишком много источников или уведомлений в записи.") }
             guard Set((e.subscriptions ?? []).map(\.id)).count == (e.subscriptions?.count ?? 0),
                   Set((e.releaseNotices ?? []).map(\.id)).count == (e.releaseNotices?.count ?? 0) else { throw ShelfError.invalid("Повторяющиеся источники или уведомления.") }
@@ -140,6 +150,8 @@ public struct Snapshot: Codable, Equatable {
                       (0..<notice.episode).contains(notice.previousEpisode), notice.title.count <= 500, notice.id.count <= 200 else { throw ShelfError.invalid("Некорректная ссылка новой серии.") }
             }
         }
+        guard (franchises?.count ?? 0) <= 2000, (franchises ?? []).allSatisfy({ $0.key.count <= 200 && $0.parts.count <= 50 && $0.parts.allSatisfy { $0.title.count <= 500 && $0.originalTitle.count <= 500 && $0.coverURL.count <= 4000 && $0.kind.count <= 30 && $0.status.count <= 20 } })
+        else { throw ShelfError.invalid("Повреждены данные франшиз.") }
         guard (history?.count ?? 0) <= WatchMark.limit, (history ?? []).allSatisfy({ (1...1_000_000).contains($0.episodes) }) else { throw ShelfError.invalid("Повреждена история просмотра.") }
         return self
     }

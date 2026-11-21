@@ -5,6 +5,9 @@ struct RootView: View {
     @EnvironmentObject var network: NetworkService
     @EnvironmentObject var assistant: ShelfAssistant
     @State private var opened: OpenedEntry?
+    @ObservedObject private var feedback = FeedbackStore.shared
+    @State private var showWhatsNew = false
+    @AppStorage(Lab.shakeFeedback) private var shakeFeedback = true
     private var pendingLink: Binding<OpenedLink?> {
         Binding(get:{ store.pendingLink.map(OpenedLink.init) },set:{ if $0 == nil { store.pendingLink = nil } })
     }
@@ -35,6 +38,10 @@ struct RootView: View {
                 .environmentObject(store).environmentObject(network).environmentObject(assistant)
         }
         .sheet(item:pendingLink) { link in LinkInboxView(url:link.url).environmentObject(store).environmentObject(network).environmentObject(assistant) }
+        .sheet(isPresented:$feedback.composing) { FeedbackSheet() }
+        .sheet(isPresented:$showWhatsNew) { WhatsNewView() }
+        .onReceive(NotificationCenter.default.publisher(for:.deviceDidShake)) { _ in if shakeFeedback && !feedback.composing { feedback.begin() } }
+        .onAppear { if !store.demo && WhatsNew.shouldShow() && !store.snapshot.entries.isEmpty { showWhatsNew = true } else if store.demo { WhatsNew.markSeen() } }
         .alert("Не удалось выполнить действие",isPresented: Binding(get:{store.error != nil},set:{if !$0 { store.error = nil }})) { Button("Понятно",role:.cancel) { store.error = nil } } message: { Text(store.error ?? "") }
     }
 }
@@ -54,7 +61,10 @@ struct ShelfView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     private var prefs: Preferences { store.snapshot.preferences }
     private var filtering: Bool { !query.isEmpty || status != nil || favoritesOnly || tag != nil || behind || dub != nil }
-    private var entries: [Entry] { store.snapshot.visible(query:query,status:status,favorites:favoritesOnly,tag:tag,behindOnly:behind,dub:dub) }
+    private var entries: [Entry] {
+        let list = store.snapshot.visible(query:query,status:status,favorites:favoritesOnly,tag:tag,behindOnly:behind,dub:dub)
+        return store.snapshot.preferences.groupFranchises && !filtering ? Franchise.grouped(list,in:store.snapshot) : list
+    }
     /// The title watched last, regardless of sorting, so «Продолжить» never depends on the list order.
     private var hero: Entry? { ReleasePlanner.continuing(store.snapshot.entries,limit:1).first }
     private var todayEntries: [Entry] {
@@ -285,6 +295,7 @@ struct PosterCard: View {
                                 if Backlog.caughtUp(entry) { CoverBadge(symbol:"hourglass",tint:.white) }
                             }.padding(8)
                         }
+                        .overlay(alignment:.bottomLeading) { FranchiseBadge(entry:entry).padding(.leading,8).padding(.bottom,Backlog.progress(entry) == nil ? 8 : 22) }
                         .overlay(alignment:.topTrailing) {
                             if let n = Backlog.available(entry) {
                                 Text("+\(n)").font(.caption.bold()).padding(.horizontal,9).padding(.vertical,5).background(Color.blue,in:Capsule()).foregroundStyle(.white).padding(8)

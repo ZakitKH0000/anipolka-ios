@@ -14,6 +14,8 @@
     python scripts/dev_remote.py open anipolka://entry/<UUID>
     python scripts/dev_remote.py backup copy.json       # копия коллекции на компьютер
     python scripts/dev_remote.py restore copy.json      # заменить коллекцию этой копией (осторожно)
+    python scripts/dev_remote.py feedback               # сообщения «Предложить / Ошибка» из Студии
+    python scripts/dev_remote.py feedback-image <id> shot.jpg | feedback-done <id>
 
 Адрес и токен можно один раз задать переменными ANIPOLKA_HOST и ANIPOLKA_TOKEN.
 Команды можно склеивать: python scripts/dev_remote.py tap Серии shot a.jpg — каждая выполняется по очереди.
@@ -67,7 +69,7 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8")
     h, t = args.host.split(":")[0], args.token
     words = list(args.words)
-    takes = {"shot": 1, "tap": 1, "scroll": 1, "type": 1, "open": 1, "backup": 1, "restore": 1}
+    takes = {"shot": 1, "tap": 1, "scroll": 1, "type": 1, "open": 1, "backup": 1, "restore": 1, "feedback-image": 1, "feedback-done": 1}
     while words:
         command = words.pop(0)
         arg = words.pop(0) if takes.get(command) and words and not (command == "type" and args.ret) else None
@@ -98,6 +100,19 @@ def main():
             show(call(h, t, "POST", "/hide-keyboard"))
         elif command == "open":
             show(call(h, t, "POST", "/open", {"url": arg}))
+        elif command == "feedback":
+            for item in call(h, t, "GET", "/feedback").get("items", []):
+                mark = "✓" if item.get("done") else "•"
+                print(f'{mark} {item["id"]} [{item["kind"]}] {item["screen"]} · {item["at"]} · {item["version"]}\n   {item["text"]}')
+        elif command == "feedback-image":
+            ident = arg
+            data = call(h, t, "GET", "/feedback-image", {"id": ident}, raw=True)
+            name = (words.pop(0) if words else f"feedback-{ident[:8]}.jpg")
+            with open(name, "wb") as f:
+                f.write(data)
+            print("Снимок сообщения:", os.path.abspath(name))
+        elif command == "feedback-done":
+            show(call(h, t, "POST", "/feedback-done", {"id": arg}))
         elif command == "backup":
             data = call(h, t, "GET", "/backup", raw=True)
             with open(arg or "anipolka-backup.json", "wb") as f:

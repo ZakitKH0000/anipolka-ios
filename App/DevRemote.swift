@@ -160,6 +160,19 @@ import Network
             guard let raw = r.query["url"], let url = URL(string: raw), url.scheme == "anipolka" || url.scheme == "https" else { return json(["error": "Нужен адрес anipolka:// или https://"], status: 400) }
             _ = await UIApplication.shared.open(url)
             return json(["ok": true])
+        case ("GET", "/feedback"):
+            let feedback = FeedbackStore.shared
+            return json(["items": feedback.items.map { item -> [String: Any] in
+                ["id": item.id.uuidString, "kind": item.kind, "text": item.text, "screen": item.screen, "version": item.version, "done": item.done,
+                 "at": ISO8601DateFormatter().string(from: item.createdAt), "image": feedback.image(item.id) != nil]
+            }])
+        case ("GET", "/feedback-image"):
+            guard let raw = r.query["id"], let id = UUID(uuidString: raw), let data = FeedbackStore.shared.image(id) else { return json(["error": "Нет снимка"], status: 404) }
+            return (200, "image/jpeg", data)
+        case ("POST", "/feedback-done"):
+            guard let raw = r.query["id"], let id = UUID(uuidString: raw) else { return json(["error": "Нужен id"], status: 400) }
+            FeedbackStore.shared.setDone(id)
+            return json(["ok": true])
         case ("GET", "/backup"):
             guard let data = try? store.snapshot.encoded() else { return json(["error": "Нет данных"], status: 500) }
             return (200, "application/json", data)
@@ -171,7 +184,7 @@ import Network
                 return json(["ok": store.change { $0 = copy }, "count": copy.entries.count])
             } catch { return json(["error": error.localizedDescription], status: 400) }
         default:
-            return json(["error": "Неизвестная команда", "commands": ["GET /ping", "GET /state", "GET /screenshot", "GET /tree", "POST /tap?label=", "POST /scroll?dir=down|up", "POST /type?text=", "POST /hide-keyboard", "POST /back", "POST /open?url=", "GET /backup", "POST /restore?confirm=yes"]], status: 404)
+            return json(["error": "Неизвестная команда", "commands": ["GET /ping", "GET /state", "GET /screenshot", "GET /tree", "POST /tap?label=", "POST /scroll?dir=down|up", "POST /type?text=", "POST /hide-keyboard", "POST /back", "POST /open?url=", "GET /feedback", "GET /feedback-image?id=", "POST /feedback-done?id=", "GET /backup", "POST /restore?confirm=yes"]], status: 404)
         }
     }
 

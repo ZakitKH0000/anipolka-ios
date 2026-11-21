@@ -132,6 +132,10 @@ import ImageIO
         guard !ids.isEmpty else { return [:] }
         return try Airing.parse(await metadata(URL(string:"https://shikimori.io/api/graphql")!,body:Airing.query(ids)))
     }
+    /// Every season, film and special of one franchise.
+    func franchise(_ key: String, previous: FranchiseInfo?) async throws -> FranchiseInfo {
+        try Franchise.parse(await metadata(URL(string:"https://shikimori.io/api/graphql")!,body:Franchise.query(key)),key:key,previous:previous)
+    }
     func alternatives(id: Int) async throws -> [String] {
         struct Shot: Decodable { let original: String }
         let data = try await metadata(URL(string: "https://shikimori.io/api/animes/\(id)/screenshots")!)

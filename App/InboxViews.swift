@@ -139,7 +139,7 @@ struct ReleasesView: View {
                 }
             }
         }
-        .navigationTitle("Новые серии")
+        .navigationTitle("Новые серии").feedbackScreen("Серии")
         .refreshable { await assistant.checkReleases(); await assistant.refreshAiring(force: true) }
         .toolbar {
             if !all.isEmpty {

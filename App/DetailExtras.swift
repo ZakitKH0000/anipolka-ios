@@ -29,8 +29,11 @@ struct CoverAtmosphere: View {
         ZStack(alignment:.top) {
             ShelfDesign.background
             if !reduceTransparency, let data, let image = UIImage(data:data) {
-                Image(uiImage:image).resizable().scaledToFill().frame(height:520).clipped().blur(radius:60).opacity(0.5)
-                    .overlay(LinearGradient(colors:[.clear,ShelfDesign.background],startPoint:.center,endPoint:.bottom))
+                // Opaque blur keeps the edges from turning into a light halo; the mask then fades the
+                // glow fully into the background before the image ends, so no seam shows while scrolling.
+                Image(uiImage:image).resizable().scaledToFill().frame(height:560).clipped().blur(radius:60,opaque:true).opacity(0.5)
+                    .mask(LinearGradient(stops:[.init(color:.black,location:0),.init(color:.black,location:0.35),.init(color:.clear,location:0.92)],startPoint:.top,endPoint:.bottom))
+                    .frame(height:560).clipped()
             }
         }.ignoresSafeArea()
     }

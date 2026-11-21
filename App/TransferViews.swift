@@ -52,6 +52,7 @@ struct SettingsView: View {
                 if busy { ProgressView("Подготовка данных…") }
                 if let notice { Text(notice).font(.footnote).foregroundStyle(.secondary) }
             } header: { Text("Перенос и резервная копия") } footer: { Text("Копия содержит коллекцию, прогресс, порядок, настройки и уже сохранённые обложки. После выбора файла вы увидите предпросмотр восстановления. До подтверждения ничего не изменяется.") }
+            StudioSection()
             Section("Об АниПолке") {
                 Label("АниПолка \(Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "")",systemImage:"books.vertical.fill")
                 Text("Разработчик — Закир Халилов").font(.subheadline)
@@ -60,7 +61,7 @@ struct SettingsView: View {
                 Link("Дополнительные обложки: Kitsu",destination:URL(string:"https://kitsu.app")!)
                 Text("Коллекция хранится на iPhone. Без рекламы и аналитики. Для поиска обложек название истории отправляется в Shikimori или Kitsu. Проверка серий читает только выбранные вами публичные страницы источников.").font(.footnote).foregroundStyle(.secondary)
             }
-        }.navigationTitle("Настройки")
+        }.navigationTitle("Настройки").feedbackScreen("Настройки")
             .sheet(isPresented:$showTextImport) { TextImportView() }
             .sheet(isPresented:$showReorder) { ReorderView() }
             .fileExporter(isPresented:$showExport,document:exportDocument,contentType:.json,defaultFilename:"АниПолка-\(Date().formatted(.iso8601.year().month().day()))") { result in
