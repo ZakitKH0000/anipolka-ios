@@ -127,6 +127,8 @@ import ImageIO
         try Task.checkCancellation()
         guard let html = String(data:data,encoding:.utf8) else { throw ShelfError.invalid("Не удалось прочитать страницу источника.") }; return html
     }
+    /// The same spaced, rate-limited catalogue request for the catalogue screens in other files.
+    func metadataPublic(_ url: URL, body: Data? = nil) async throws -> Data { try await metadata(url, body: body) }
     /// Broadcast data for up to 50 titles in one request; only catalogue IDs are sent.
     func airing(ids: [Int]) async throws -> [Int: AiringInfo] {
         guard !ids.isEmpty else { return [:] }

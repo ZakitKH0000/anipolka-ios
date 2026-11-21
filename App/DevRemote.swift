@@ -154,6 +154,12 @@ import Network
         case ("POST", "/hide-keyboard"):
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             return json(["ok": true])
+        case ("POST", "/tab"):
+            guard let index = Int(r.query["index"] ?? ""), let tabs = Self.tabController(), tabs.viewControllers?.indices.contains(index) == true else { return json(["error": "Нужен index 0…4"], status: 400) }
+            if let presented = tabs.presentedViewController { presented.dismiss(animated: false) }
+            tabs.selectedIndex = index
+            try? await Task.sleep(for: .milliseconds(400))
+            return json(["ok": true, "tab": index])
         case ("POST", "/back"):
             return json(["ok": Self.goBack()])
         case ("POST", "/open"):
@@ -184,7 +190,7 @@ import Network
                 return json(["ok": store.change { $0 = copy }, "count": copy.entries.count])
             } catch { return json(["error": error.localizedDescription], status: 400) }
         default:
-            return json(["error": "Неизвестная команда", "commands": ["GET /ping", "GET /state", "GET /screenshot", "GET /tree", "POST /tap?label=", "POST /scroll?dir=down|up", "POST /type?text=", "POST /hide-keyboard", "POST /back", "POST /open?url=", "GET /feedback", "GET /feedback-image?id=", "POST /feedback-done?id=", "GET /backup", "POST /restore?confirm=yes"]], status: 404)
+            return json(["error": "Неизвестная команда", "commands": ["GET /ping", "GET /state", "GET /screenshot", "GET /tree", "POST /tap?label=", "POST /scroll?dir=down|up", "POST /type?text=", "POST /hide-keyboard", "POST /back", "POST /tab?index=0…4", "POST /open?url=", "GET /feedback", "GET /feedback-image?id=", "POST /feedback-done?id=", "GET /backup", "POST /restore?confirm=yes"]], status: 404)
         }
     }
 
@@ -261,6 +267,16 @@ import Network
         if let top = topController(), let root = top.view { visit(root) }
         if best == nil { visit(window) }
         return best
+    }
+
+    private static func tabController() -> UITabBarController? {
+        func find(_ c: UIViewController?) -> UITabBarController? {
+            guard let c else { return nil }
+            if let t = c as? UITabBarController { return t }
+            for child in c.children { if let t = find(child) { return t } }
+            return nil
+        }
+        return find(keyWindow?.rootViewController)
     }
 
     private static func topController() -> UIViewController? {

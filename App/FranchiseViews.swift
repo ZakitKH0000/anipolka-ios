@@ -124,6 +124,29 @@ struct FranchiseSection: View {
     }
 }
 
+/// «У вас сезон 3, а привязан сезон 1 — привязать к нужному?»
+struct SeasonMismatchCard: View {
+    let entry: Entry
+    @EnvironmentObject var store: ShelfStore
+    @EnvironmentObject var assistant: ShelfAssistant
+    var body: some View {
+        if let part = Franchise.seasonMismatch(entry, in: store.snapshot), let season = entry.season {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Сезон \(season) или другой?", systemImage: "exclamationmark.arrow.triangle.2.circlepath").font(.headline).foregroundStyle(.orange)
+                Text("В записи указан сезон \(season), а по названию она связана с другой частью. Сезон \(season) в каталоге — «\(part.title)».").font(.subheadline).foregroundStyle(.secondary)
+                HStack {
+                    Button("Привязать к сезону \(season)") {
+                        if store.change({ Franchise.rebind(&$0, entryID: entry.id, to: part) }) { Task { await assistant.refreshAiring(force: true); assistant.queueCovers(force: true) } }
+                    }.buttonStyle(.borderedProminent).accessibilityIdentifier("rebind-season")
+                }.controlSize(.small)
+                Text("Название, прогресс и заметки не изменятся; обновятся обложка, даты выхода и вкладки сезонов.").font(.caption2).foregroundStyle(.secondary)
+            }
+            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+    }
+}
+
 /// «Сезон досмотрен — начать следующий?»
 struct NextSeasonCard: View {
     let entry: Entry

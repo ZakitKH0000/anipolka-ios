@@ -5,6 +5,7 @@ struct RootView: View {
     @EnvironmentObject var network: NetworkService
     @EnvironmentObject var assistant: ShelfAssistant
     @State private var opened: OpenedEntry?
+    @State private var watchRequest: WatchRequest?
     @ObservedObject private var feedback = FeedbackStore.shared
     @State private var showWhatsNew = false
     @AppStorage(Lab.shakeFeedback) private var shakeFeedback = true
@@ -14,6 +15,8 @@ struct RootView: View {
     var body: some View {
         TabView {
             ShelfView().tabItem { Label("Коллекция",systemImage:"books.vertical.fill") }
+            NavigationStack { TodayView() }.tabItem { Label("Сегодня",systemImage:"sun.max.fill") }
+            NavigationStack { ExploreView() }.tabItem { Label("Обзор",systemImage:"safari.fill") }
             NavigationStack { ReleasesView() }.tabItem { Label("Серии",systemImage:"bell") }.badge(NoticeInbox.unread(store.snapshot))
             NavigationStack { SettingsView() }.tabItem { Label("Настройки",systemImage:"slider.horizontal.3") }
         }
@@ -29,9 +32,12 @@ struct RootView: View {
         }
         // Widgets open a title through anipolka://entry/<id>.
         .onOpenURL { url in
-            guard url.scheme == "anipolka", url.host == "entry", let id = UUID(uuidString:url.lastPathComponent),
-                  store.snapshot.entries.contains(where:{$0.id == id}) else { return }
-            opened = OpenedEntry(id:id)
+            guard url.scheme == "anipolka", url.host == "entry" || url.host == "watch", let id = UUID(uuidString:url.lastPathComponent),
+                  let entry = store.snapshot.entries.first(where:{$0.id == id}) else { return }
+            if url.host == "watch" {
+                let asked = URLComponents(url:url,resolvingAgainstBaseURL:false)?.queryItems?.first { $0.name == "episode" }?.value.flatMap { Int($0) }
+                opened = nil; watchRequest = WatchRequest(entryID:id,episode:asked ?? entry.seasonEpisode + 1)
+            } else { opened = OpenedEntry(id:id) }
         }
         .sheet(item:$opened) { item in
             NavigationStack { EntryDetail(id:item.id).toolbar { ToolbarItem(placement:.cancellationAction) { Button("Готово") { opened = nil } } } }
@@ -39,6 +45,7 @@ struct RootView: View {
         }
         .sheet(item:pendingLink) { link in LinkInboxView(url:link.url).environmentObject(store).environmentObject(network).environmentObject(assistant) }
         .sheet(isPresented:$feedback.composing) { FeedbackSheet() }
+        .fullScreenCover(item:$watchRequest) { request in WatchView(entryID:request.entryID,episode:request.episode).environmentObject(store) }
         .sheet(isPresented:$showWhatsNew) { WhatsNewView() }
         .onReceive(NotificationCenter.default.publisher(for:.deviceDidShake)) { _ in if shakeFeedback && !feedback.composing { feedback.begin() } }
         .onAppear { if !store.demo && WhatsNew.shouldShow() && !store.snapshot.entries.isEmpty { showWhatsNew = true } else if store.demo { WhatsNew.markSeen() } }

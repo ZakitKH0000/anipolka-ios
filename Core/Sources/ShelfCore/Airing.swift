@@ -91,7 +91,7 @@ public enum Airing {
             let aired = int(a["episodesAired"]).flatMap { $0 > 0 ? $0 : nil }
             result[id] = AiringInfo(checkedAt: now, status: status, episodes: episodes, episodesAired: aired,
                                     nextEpisodeAt: (status == ongoing || status == anons) ? next : nil, sequel: sequel,
-                                    franchise: (a["franchise"] as? String).flatMap { $0.isEmpty || $0.count > 200 ? nil : $0 })
+                                    franchise: (a["franchise"] as? String).map { $0.count > 200 ? "" : $0 } ?? "")
         }
         return result
     }
@@ -99,7 +99,7 @@ public enum Airing {
     /// Ongoing titles are refreshed every 6 hours (and soon after the announced time), finished ones weekly.
     public static func needsRefresh(_ e: Entry, now: Date = Date()) -> Bool {
         guard e.sourceID != nil, e.status != .dropped else { return false }
-        guard let info = e.airing else { return true }
+        guard let info = e.airing, info.franchise != nil else { return true }
         let age = now.timeIntervalSince(info.checkedAt)
         if let next = info.nextEpisodeAt, now > next.addingTimeInterval(1800), age > 1800 { return true }
         switch info.status {
@@ -112,7 +112,7 @@ public enum Airing {
     /// Saves fresh data; empty release days are filled from the broadcast weekday.
     public static func apply(_ e: Entry, _ info: AiringInfo, calendar: Calendar = .current) -> Entry {
         var next = e; next.airing = info
-        if let key = info.franchise { next.franchise = key }
+        if let key = info.franchise, !key.isEmpty { next.franchise = key }
         if (e.releaseDays ?? []).isEmpty, info.status == ongoing, let at = info.nextEpisodeAt {
             next.releaseDays = [ReleasePlanner.weekday(of: at, calendar: calendar)]
         }

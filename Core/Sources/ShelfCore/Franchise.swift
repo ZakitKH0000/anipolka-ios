@@ -159,6 +159,30 @@ public enum Franchise {
         return next
     }
 
+    /// The main season the user's own «Сезон N» points to, when the entry is bound to another part.
+    public static func seasonMismatch(_ entry: Entry, in snapshot: Snapshot) -> FranchisePart? {
+        guard let season = entry.season, let info = Franchise.info(entry, in: snapshot) else { return nil }
+        let main = info.parts.filter(isMain)
+        guard main.indices.contains(season - 1) else { return nil }
+        let wanted = main[season - 1]
+        guard wanted.id != entry.sourceID, !snapshot.entries.contains(where: { $0.id != entry.id && $0.sourceID == wanted.id }) else { return nil }
+        return wanted
+    }
+
+    /// Binds the entry to another part: catalogue id, page, poster and broadcast data follow; title and progress stay.
+    public static func rebind(_ snapshot: inout Snapshot, entryID: UUID, to part: FranchisePart, now: Date = Date()) {
+        guard let i = snapshot.entries.firstIndex(where: { $0.id == entryID }) else { return }
+        snapshot.entries[i].sourceID = part.id
+        snapshot.entries[i].sourceURL = "https://shikimori.io/animes/\(part.id)"
+        snapshot.entries[i].originalTitle = part.originalTitle
+        if !part.coverURL.isEmpty { snapshot.entries[i].coverURL = part.coverURL; snapshot.entries[i].coverData = nil; snapshot.entries[i].coverDiscovery = nil }
+        snapshot.entries[i].airing = nil
+        snapshot.entries[i].updatedAt = now
+        var names = snapshot.entries[i].aliases ?? []
+        if !part.title.isEmpty, part.title != snapshot.entries[i].title, !names.contains(part.title) { names.append(part.title) }
+        snapshot.entries[i].aliases = names.isEmpty ? nil : Array(names.prefix(Aliases.limit))
+    }
+
     /// A new entry for a part, numbered like the rest of the franchise.
     public static func entry(for part: FranchisePart, after previous: Entry?, in info: FranchiseInfo, status: WatchStatus, now: Date = Date()) -> Entry {
         var e = Entry(title: part.title)

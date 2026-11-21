@@ -14,7 +14,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert info['UIDeviceFamily'] == [1]
     assert info['MinimumOSVersion'] == '17.0'
     assert info['CFBundleShortVersionString'] == '1.4.0'
-    assert info['CFBundleVersion'] == '6'
+    assert info['CFBundleVersion'] == '7'
     assert info['CFBundleURLTypes'][0]['CFBundleURLSchemes'] == ['anipolka']
     assert info['UIBackgroundModes'] == ['fetch']
     assert info['BGTaskSchedulerPermittedIdentifiers'] == ['com.zakitkh.anipolka.releases']

@@ -1,6 +1,8 @@
 import SwiftUI
 import WebKit
 
+struct WatchRequest: Identifiable { let entryID: UUID; let episode: Int; var id: String { "\(entryID)-\(episode)" } }
+
 /// Where to watch an episode inside the app: the found notice link, the connected AniVibe page or the user's own link.
 enum WatchTarget {
     static func url(for e: Entry, episode: Int) -> URL? {
@@ -27,17 +29,37 @@ enum WatchTarget {
     @Published var playerEpisode: Int?
     @Published var endedCount = 0
     @Published var loading = true
+    /// Seconds actually played of the current long video (seeking ahead does not count).
+    @Published var watched: Double = 0
+    private var lastPosition: Double = 0
+    /// An episode, not an ad: at least five minutes long.
+    static let minimumEpisode: Double = 300
+    /// Watched enough of a real episode to count it: most of it played and the end reached.
+    var finished: Bool { duration >= Self.minimumEpisode && watched >= duration * 0.55 && position >= duration - 90 }
+    private func setDuration(_ d: Double) {
+        guard d.isFinite, d > 0, abs(d - duration) > 1 else { return }
+        // Another video started (an ad finished, the next episode began): count from zero.
+        duration = d; watched = 0; lastPosition = position
+    }
+    private func setPosition(_ t: Double) {
+        guard t.isFinite else { return }
+        let delta = t - lastPosition
+        if delta > 0, delta <= 15, duration >= Self.minimumEpisode { watched += delta }
+        lastPosition = t; position = t
+    }
+    func reset() { position = 0; duration = 0; watched = 0; lastPosition = 0; playerEpisode = nil; loading = true }
     func receive(_ body: Any) {
         guard let m = body as? [String: Any], let key = m["k"] as? String else { return }
         let value = m["v"]
         switch key {
         case "time", "kodik_player_time_update":
-            if let t = (value as? NSNumber)?.doubleValue { position = t }
-            if let d = (m["d"] as? NSNumber)?.doubleValue, d.isFinite, d > 0 { duration = d }
+            if let d = (m["d"] as? NSNumber)?.doubleValue { setDuration(d) }
+            if let t = (value as? NSNumber)?.doubleValue { setPosition(t) }
         case "kodik_player_duration_update":
-            if let d = (value as? NSNumber)?.doubleValue, d > 0 { duration = d }
+            if let d = (value as? NSNumber)?.doubleValue { setDuration(d) }
         case "ended", "kodik_player_video_ended":
-            endedCount += 1
+            if let d = (m["d"] as? NSNumber)?.doubleValue, d.isFinite, d < Self.minimumEpisode { return }
+            if finished || (duration >= Self.minimumEpisode && watched >= duration * 0.55) { endedCount += 1 }
         case "kodik_player_current_episode":
             if let info = value as? [String: Any], let ep = (info["episode"] as? NSNumber)?.intValue ?? (info["episode"] as? String).flatMap({ Int($0) }) { playerEpisode = ep }
         default: break
@@ -158,9 +180,9 @@ struct WatchView: View {
             }
         }
         .onChange(of: model.endedCount) { _, _ in mark(model.playerEpisode ?? episode) }
-        .onChange(of: model.position) { _, value in
-            // Credits: an episode watched to its last minute counts as finished even if the video does not report the end.
-            if model.duration > 300, value > model.duration - 75 { mark(model.playerEpisode ?? episode) }
+        .onChange(of: model.position) { _, _ in
+            // Credits: an episode played to its last minutes counts as finished even if the video does not report the end.
+            if model.finished { mark(model.playerEpisode ?? episode) }
         }
         .onChange(of: model.playerEpisode) { _, value in if let value { episode = value } }
     }
@@ -172,10 +194,10 @@ struct WatchView: View {
         withAnimation(.snappy) { banner = "Серия \(number) отмечена" }
     }
     private func next() { episode = (model.playerEpisode ?? episode) + 1; reset() }
-    private func reset() { model.position = 0; model.duration = 0; model.playerEpisode = nil; model.loading = true; withAnimation { banner = nil } }
+    private func reset() { model.reset(); withAnimation { banner = nil } }
     private func close() {
         let number = model.playerEpisode ?? episode
-        if model.position >= 60, !markedEpisodes.contains(number), let e = entry {
+        if model.position >= 60, model.duration >= WatchModel.minimumEpisode, !markedEpisodes.contains(number), let e = entry {
             let seconds = Int(model.position)
             let time = seconds >= 3600 ? String(format: "%d:%02d:%02d", seconds / 3600, seconds % 3600 / 60, seconds % 60) : String(format: "%d:%02d", seconds / 60, seconds % 60)
             let absolute = number + (e.episodeOffset ?? 0)

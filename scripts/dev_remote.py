@@ -11,6 +11,7 @@
     python scripts/dev_remote.py scroll down | scroll up
     python scripts/dev_remote.py type "Фрирен" | type --return
     python scripts/dev_remote.py back | hide-keyboard
+    python scripts/dev_remote.py tab 1                  # вкладки: 0 Коллекция, 1 Сегодня, 2 Обзор, 3 Серии, 4 Настройки
     python scripts/dev_remote.py open anipolka://entry/<UUID>
     python scripts/dev_remote.py backup copy.json       # копия коллекции на компьютер
     python scripts/dev_remote.py restore copy.json      # заменить коллекцию этой копией (осторожно)
@@ -69,7 +70,7 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8")
     h, t = args.host.split(":")[0], args.token
     words = list(args.words)
-    takes = {"shot": 1, "tap": 1, "scroll": 1, "type": 1, "open": 1, "backup": 1, "restore": 1, "feedback-image": 1, "feedback-done": 1}
+    takes = {"shot": 1, "tap": 1, "scroll": 1, "type": 1, "open": 1, "backup": 1, "restore": 1, "feedback-image": 1, "feedback-done": 1, "tab": 1}
     while words:
         command = words.pop(0)
         arg = words.pop(0) if takes.get(command) and words and not (command == "type" and args.ret) else None
@@ -94,6 +95,8 @@ def main():
             show(call(h, t, "POST", "/scroll", {"dir": arg or "down"}))
         elif command == "type":
             show(call(h, t, "POST", "/type", {"key": "return"} if args.ret else {"text": arg or ""}))
+        elif command == "tab":
+            show(call(h, t, "POST", "/tab", {"index": arg or "0"}))
         elif command == "back":
             show(call(h, t, "POST", "/back"))
         elif command == "hide-keyboard":

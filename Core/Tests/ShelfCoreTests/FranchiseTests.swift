@@ -67,4 +67,16 @@ final class FranchiseTests: XCTestCase {
         let plan = try XCTUnwrap(Franchise.catchUp(s.entries[1], in: s, now: now, calendar: cal))
         XCTAssertEqual(plan.remaining, 13); XCTAssertEqual(plan.days, 10); XCTAssertEqual(plan.perDay, 2)
     }
+
+    func testSeasonNumberRebindsToTheRightPart() throws {
+        var s = try setup()
+        s.entries.remove(at: 1)
+        s.entries[0].season = 3; s.entries[0].episode = 3
+        let part = try XCTUnwrap(Franchise.seasonMismatch(s.entries[0], in: s))
+        XCTAssertEqual(part.id, 58448)
+        Franchise.rebind(&s, entryID: s.entries[0].id, to: part)
+        XCTAssertEqual(s.entries[0].sourceID, 58448); XCTAssertEqual(s.entries[0].episode, 3); XCTAssertEqual(s.entries[0].title, "Бессмертие")
+        XCTAssertNil(s.entries[0].airing)
+        XCTAssertNil(Franchise.seasonMismatch(s.entries[0], in: s))
+    }
 }

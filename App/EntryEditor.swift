@@ -42,6 +42,7 @@ struct EntryDetail: View {
                         if let aliases = e.aliases, !aliases.isEmpty {
                             DisclosureGroup("Другие названия: \(aliases.count)") { VStack(alignment:.leading,spacing:4) { ForEach(aliases,id:\.self) { Text($0).font(.subheadline).textSelection(.enabled) } }.frame(maxWidth:.infinity,alignment:.leading) }.font(.subheadline)
                         }
+                        SeasonMismatchCard(entry:e)
                         NextSeasonCard(entry:e) { newID in withAnimation(.snappy) { shownID = newID } }
                         if inAppPlayer, WatchTarget.available(e) {
                             Button { watching = e.seasonEpisode + 1 } label: {
@@ -50,8 +51,9 @@ struct EntryDetail: View {
                         }
                         AiringCard(entry:e)
                         CatchUpCard(entry:e)
+                        AnimeInfoSection(entry:e)
                         FranchiseSection(entry:e) { newID in withAnimation(.snappy) { shownID = newID } }
-                        if let hint = Airing.sequelSuggestion(e, in: store.snapshot) {
+                        if Franchise.info(e, in: store.snapshot) == nil, let hint = Airing.sequelSuggestion(e, in: store.snapshot) {
                             SequelRow(entry:e,hint:hint).padding(12).background(.thinMaterial,in:RoundedRectangle(cornerRadius:22,style:.continuous))
                         }
                         ResumeCard(entry:e)
