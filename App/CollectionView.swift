@@ -206,6 +206,7 @@ struct CoverBadge: View {
 
 struct HeroCard: View {
     let entry: Entry
+    @EnvironmentObject var store: ShelfStore
     @Environment(\.dynamicTypeSize) var typeSize
     var body: some View {
         ZStack(alignment:.bottomTrailing) {
@@ -226,6 +227,7 @@ struct HeroCard: View {
             Text(entry.title).font(.title2.bold()).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(.leading)
             HStack(spacing:8) {
                 Text("Серия \(entry.episode)").font(.subheadline.weight(.medium)).foregroundStyle(.white.opacity(0.9)).contentTransition(.numericText(value:Double(entry.episode))).animation(.snappy,value:entry.episode)
+                if let line = Franchise.seasonLine(entry, in:store.snapshot) { Text(line).font(.caption2.weight(.semibold)).foregroundStyle(.white.opacity(0.75)).lineLimit(1) }
                 if let n = Backlog.available(entry) { Text("+\(n)").font(.caption.bold()).padding(.horizontal,8).padding(.vertical,3).background(Color.blue,in:Capsule()).foregroundStyle(.white) }
                 else if Backlog.caughtUp(entry) { Label("Догнал",systemImage:"hourglass").font(.caption).foregroundStyle(.white.opacity(0.85)) }
             }
@@ -278,6 +280,7 @@ struct PosterGrid: View {
 /// Badges sit on the cover, so nothing under the title can wrap or be cut off.
 struct PosterCard: View {
     let entry: Entry
+    @EnvironmentObject var store: ShelfStore
     private var releasesToday: Bool { (entry.releaseDays ?? []).contains(ReleasePlanner.weekday(of:Date())) && (entry.status == .watching || entry.status == .planned) }
     private var spoken: String {
         var parts = [entry.title,"серия \(entry.episode)"]
@@ -318,7 +321,7 @@ struct PosterCard: View {
                 }
             }.buttonStyle(.plain).accessibilityLabel(spoken)
             HStack(spacing:6) {
-                Text("Серия \(entry.episode)").font(.footnote).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+                Text("Серия \(entry.episode)" + (Franchise.seasonLine(entry, in:store.snapshot).map { " · " + $0 } ?? "")).font(.footnote).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
                     .contentTransition(.numericText(value:Double(entry.episode))).animation(.snappy,value:entry.episode)
                 Spacer(minLength:2)
                 IncrementButton(entry:entry)

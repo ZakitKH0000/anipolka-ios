@@ -153,7 +153,7 @@ public enum Franchise {
 
     /// «Сезон досмотрен — начать следующий?» unless the next season is already being watched or was dismissed.
     public static func nextSeasonPrompt(_ entry: Entry, in snapshot: Snapshot) -> FranchisePart? {
-        guard let info = Franchise.info(entry, in: snapshot), seasonFinished(entry, in: info), let next = nextPart(entry, in: info),
+        guard let info = Franchise.info(entry, in: snapshot), seasonFinished(entry, in: info), overflow(entry, in: snapshot) == nil, let next = nextPart(entry, in: info),
               next.status != Airing.anons, entry.dismissedSequelID != next.id else { return nil }
         if let existing = snapshot.entries.first(where: { $0.sourceID == next.id }), existing.status == .watching || existing.status == .completed || existing.episode > 0 { return nil }
         return next

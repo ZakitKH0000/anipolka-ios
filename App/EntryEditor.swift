@@ -25,7 +25,7 @@ struct EntryDetail: View {
                         if !e.originalTitle.isEmpty && e.originalTitle != e.title { Text(e.originalTitle).foregroundStyle(.secondary) }
                         FranchiseSeasonsStrip(entry:e) { newID in withAnimation(.snappy) { shownID = newID } }
                         HStack {
-                            VStack(alignment:.leading,spacing:5) { Text("Последняя просмотренная").font(.subheadline).foregroundStyle(.secondary); Text("Серия \(e.episode)").font(.title.bold()).contentTransition(.numericText(value:Double(e.episode))).animation(.snappy,value:e.episode); if let season = e.season { Text("Сезон \(season)") }; if let pass = e.passTitle { Text(pass).font(.caption).foregroundStyle(.secondary) } }
+                            VStack(alignment:.leading,spacing:5) { Text("Последняя просмотренная").font(.subheadline).foregroundStyle(.secondary); Text("Серия \(e.episode)").font(.title.bold()).contentTransition(.numericText(value:Double(e.episode))).animation(.snappy,value:e.episode); if let line = Franchise.seasonLine(e, in:store.snapshot) { Text(line.capitalizedFirst).font(.subheadline.weight(.semibold)).foregroundStyle(.tint) } else if let season = e.season { Text("Сезон \(season)") }; if let pass = e.passTitle { Text(pass).font(.caption).foregroundStyle(.secondary) } }
                             Spacer(); IncrementButton(entry:e)
                         }
                         HStack { Label(e.status.rawValue,systemImage:"bookmark"); Spacer(); Button { var copy = e; copy.favorite.toggle(); copy.updatedAt = Date(); _ = store.save(copy) } label: { Label(e.favorite ? "В избранном" : "В избранное",systemImage:e.favorite ? "star.fill" : "star") }.frame(minHeight:44) }.font(.subheadline)
@@ -42,6 +42,7 @@ struct EntryDetail: View {
                         if let aliases = e.aliases, !aliases.isEmpty {
                             DisclosureGroup("Другие названия: \(aliases.count)") { VStack(alignment:.leading,spacing:4) { ForEach(aliases,id:\.self) { Text($0).font(.subheadline).textSelection(.enabled) } }.frame(maxWidth:.infinity,alignment:.leading) }.font(.subheadline)
                         }
+                        SeasonOverflowCard(entry:e)
                         SeasonMismatchCard(entry:e)
                         SeasonDoneCard(entry:e)
                         NextSeasonCard(entry:e) { newID in withAnimation(.snappy) { shownID = newID } }
@@ -86,6 +87,8 @@ struct EntryDetail: View {
                         Button("Начать пересмотр") { var copy = e; copy.startRewatch(); _ = store.save(copy) }
                     } message: { Text("Номер серии станет 0, статус — «Смотрю». Сколько серий было в прошлый раз, сохранится в карточке.") }
                     .toolbar { Button("Изменить") { editing = true }.accessibilityIdentifier("edit-entry") }
+                    // A solid bar under «Готово» / «Изменить»: text scrolling under the buttons no longer shows through.
+                    .toolbarBackground(.visible, for: .navigationBar)
                     .sheet(isPresented:$editing) { EntryEditor(entry:e) {} }
                     .sheet(isPresented:$showSources) { EntrySourcesView(entryID:currentID) }
                     .fullScreenCover(item:Binding(get:{ watching.map { WatchEpisode(number:$0) } },set:{ watching = $0?.number })) { item in

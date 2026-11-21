@@ -184,7 +184,8 @@ struct SeasonDoneCard: View {
     @State private var confetti = false
     private var key: String { "celebrated-\(entry.id.uuidString)-\(entry.sourceID ?? 0)" }
     private var finished: Bool {
-        guard let info = entry.airing, info.status == Airing.released, let total = info.episodes ?? info.episodesAired else { return false }
+        guard let info = entry.airing, info.status == Airing.released, let total = info.episodes ?? info.episodesAired,
+              Franchise.overflow(entry, in: store.snapshot) == nil else { return false }
         return entry.seasonEpisode >= total
     }
     private var days: Int? {

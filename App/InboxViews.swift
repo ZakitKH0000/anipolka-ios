@@ -59,7 +59,7 @@ struct ReleasesView: View {
         let freshIDs = groupedIDs.union(otherFresh.map(\.id))
         let continuing = ReleasePlanner.continuing(s.entries, limit: 5).filter { !freshIDs.contains($0.id) }
         let plans = s.entries.compactMap { e in Franchise.catchUp(e, in: s).map { (e, $0) } }.prefix(3)
-        let sequels = s.entries.compactMap { e in Airing.sequelSuggestion(e, in: s).map { (e, $0) } }
+        let sequels = s.entries.filter { Franchise.info($0, in: s) == nil }.compactMap { e in Airing.sequelSuggestion(e, in: s).map { (e, $0) } }
         let days = Airing.calendar(s.entries)
         List {
             if !grouped.isEmpty || !otherFresh.isEmpty {

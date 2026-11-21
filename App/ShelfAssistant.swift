@@ -201,16 +201,41 @@ import UserNotifications
                 for (entry, episode) in dubbed { await NotificationBridge.shared.deliverInfo(id: "libria-\(entry.id.uuidString)-\(episode)", title: "Озвучка AniLibria · \(entry.title)", body: "Вышла серия \(episode) в озвучке AniLibria.") }
             }
         }
+        // Titles without a Shikimori franchise get their seasons from the prequel/sequel chain.
+        let loose = store.snapshot.entries.filter { $0.franchise == nil && $0.sourceID != nil && $0.airing?.franchise == "" && $0.status != .dropped }
+        for e in loose.prefix(8) {
+            guard let id = e.sourceID, let info = try? await chain(from: id, previous: nil) else { continue }
+            let ids = Set(info.parts.map(\.id))
+            _ = store.change { state in
+                var list = (state.franchises ?? []).filter { $0.key != info.key }
+                list.append(info); state.franchises = list
+                for i in state.entries.indices where state.entries[i].franchise == nil && ids.contains(state.entries[i].sourceID ?? -1) { state.entries[i].franchise = info.key }
+            }
+        }
         // Parts of every franchise in the collection, for the season tabs and the next-season prompt.
         let keys = Array(Set(store.snapshot.entries.compactMap(\.franchise))).sorted()
         for key in keys.prefix(60) {
             let previous = store.snapshot.franchises?.first { $0.key == key }
-            guard force || Franchise.needsRefresh(previous), let info = try? await network.franchise(key, previous: previous) else { continue }
+            guard force || Franchise.needsRefresh(previous) else { continue }
+            let fresh: FranchiseInfo?
+            if FranchiseChain.isChain(key), let root = Int(key.dropFirst(FranchiseChain.prefix.count)) { fresh = try? await chain(from: root, previous: previous) }
+            else { fresh = try? await network.franchise(key, previous: previous) }
+            guard let info = fresh, info.key == key else { continue }
             _ = store.change { state in
                 var list = (state.franchises ?? []).filter { $0.key != key }
                 list.append(info); state.franchises = list
             }
         }
+    }
+    /// Walks prequels and sequels from one part (at most 12 parts, a few requests).
+    private func chain(from id: Int, previous: FranchiseInfo?) async throws -> FranchiseInfo? {
+        var seen: [Int: FranchiseChain.Node] = [:], frontier = [id]
+        for _ in 0..<6 where !frontier.isEmpty && seen.count < 12 {
+            let nodes = try await network.chainNodes(frontier)
+            for node in nodes { seen[node.part.id] = node }
+            frontier = Array(Set(nodes.flatMap(\.neighbours)).subtracting(seen.keys)).sorted().prefix(max(0, 12 - seen.count)).map { $0 }
+        }
+        return FranchiseChain.assemble(Array(seen.values), previous: previous)
     }
     func scheduleBackground() {
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier:Self.refreshID)

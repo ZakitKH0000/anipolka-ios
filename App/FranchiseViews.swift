@@ -149,6 +149,27 @@ struct SeasonMismatchCard: View {
     }
 }
 
+/// The number runs past the season the entry is bound to: offer to move it to the right season.
+struct SeasonOverflowCard: View {
+    let entry: Entry
+    @EnvironmentObject var store: ShelfStore
+    @EnvironmentObject var assistant: ShelfAssistant
+    var body: some View {
+        if let over = Franchise.overflow(entry, in: store.snapshot) {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Вы уже на \(over.season) сезоне", systemImage: "arrow.forward.circle.fill").font(.headline).foregroundStyle(.orange)
+                Text("Серия \(entry.episode) по вашей нумерации — это сезон \(over.season), серия \(over.episode) («\(over.part.title)»).").font(.subheadline).foregroundStyle(.secondary)
+                Button("Перейти на сезон \(over.season)") {
+                    if store.change({ Franchise.move(&$0, entryID: entry.id, to: over) }) { Task { await assistant.refreshAiring(force: true); assistant.queueCovers(force: true) } }
+                }.buttonStyle(.borderedProminent).controlSize(.small).accessibilityIdentifier("move-season")
+                Text("Ваша общая нумерация (серия \(entry.episode)) останется; обновятся обложка, даты выхода и вкладки сезонов.").font(.caption2).foregroundStyle(.secondary)
+            }
+            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+    }
+}
+
 /// «Сезон досмотрен — начать следующий?»
 struct NextSeasonCard: View {
     let entry: Entry

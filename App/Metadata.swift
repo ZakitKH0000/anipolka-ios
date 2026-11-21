@@ -194,6 +194,11 @@ import ImageIO
         guard !ids.isEmpty else { return [:] }
         return try Airing.parse(await metadata(URL(string:"https://shikimori.io/api/graphql")!,body:Airing.query(ids)))
     }
+    /// Parts with their prequels and sequels, for titles Shikimori gives no franchise.
+    func chainNodes(_ ids: [Int]) async throws -> [FranchiseChain.Node] {
+        guard !ids.isEmpty else { return [] }
+        return try FranchiseChain.parse(await metadata(URL(string:"https://shikimori.io/api/graphql")!,body:FranchiseChain.query(ids)))
+    }
     /// Every season, film and special of one franchise.
     func franchise(_ key: String, previous: FranchiseInfo?) async throws -> FranchiseInfo {
         try Franchise.parse(await metadata(URL(string:"https://shikimori.io/api/graphql")!,body:Franchise.query(key)),key:key,previous:previous)
