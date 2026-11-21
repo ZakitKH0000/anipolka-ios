@@ -31,13 +31,14 @@ struct AutomationSettingsView: View {
                     Task {
                         let allowed = await NotificationBridge.shared.enable()
                         _ = store.change { $0.preferences.releaseNotifications = allowed }
-                        permissionMessage = allowed ? "Уведомления включены для новых серий выбранных источников." : "Уведомления не разрешены. Их можно включить в Настройках iPhone → АниПолка → Уведомления. Найденные серии всё равно появятся во вкладке «Серии»."
+                        permissionMessage = allowed ? "Уведомления включены для новых серий выбранных источников." : "Уведомления не разрешены. Их можно включить в Настройках iPhone → АниПолка → Уведомления. Найденные серии всё равно появятся во вкладке «Выходы»."
                         askingPermission = false
                     }
                 })).disabled(askingPermission).accessibilityIdentifier("release-notifications")
                 if askingPermission { ProgressView() }
                 if let permissionMessage { Text(permissionMessage).font(.footnote).foregroundStyle(.secondary) }
-            } header: { Text("Новые серии") } footer: { Text("В карточке истории выберите страницу AniVibe, сезон и озвучку. iOS сама назначает время фоновой проверки: мгновенные уведомления без сервера не гарантируются. При принудительном закрытии приложения проверки могут не выполняться до следующего открытия. Кнопка «Проверить сейчас» — во вкладке «Серии».") }
+            } header: { Text("Новые серии") } footer: { Text("В карточке истории выберите страницу AniVibe, сезон и озвучку. iOS сама назначает время фоновой проверки: мгновенные уведомления без сервера не гарантируются. При принудительном закрытии приложения проверки могут не выполняться до следующего открытия. Кнопка «Проверить сейчас» — во вкладке «Выходы».") }
+            AnivibeMirrorSection()
         }
     }
 }

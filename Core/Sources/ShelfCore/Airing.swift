@@ -31,6 +31,10 @@ public struct AiringInfo: Codable, Equatable {
     public var nextEpisode: Int?
     /// AniLibria's dub schedule, when the title is in it.
     public var libria: LibriaInfo?
+    /// Native (Chinese or Japanese) title from Shikimori, used to find the title on Bangumi.
+    public var nativeTitle: String?
+    /// Episode dates from Bangumi.
+    public var bangumi: BangumiInfo?
     public init(checkedAt: Date, status: String, episodes: Int? = nil, episodesAired: Int? = nil, nextEpisodeAt: Date? = nil, sequel: SequelHint? = nil, franchise: String? = nil, nextEpisode: Int? = nil, libria: LibriaInfo? = nil) {
         self.checkedAt = checkedAt; self.status = status; self.episodes = episodes; self.episodesAired = episodesAired; self.nextEpisodeAt = nextEpisodeAt; self.sequel = sequel; self.franchise = franchise
         self.nextEpisode = nextEpisode; self.libria = libria
@@ -57,7 +61,7 @@ public enum Airing {
 
     /// GraphQL request body for up to 50 titles; the answer is read by `parse`.
     public static func query(_ ids: [Int]) -> Data {
-        let q = "query($ids: String!) { animes(ids: $ids, limit: 50) { id franchise status episodes episodesAired nextEpisodeAt related { relationKind anime { id name russian status kind airedOn { date } poster { mainUrl } } } } }"
+        let q = "query($ids: String!) { animes(ids: $ids, limit: 50) { id franchise japanese status episodes episodesAired nextEpisodeAt related { relationKind anime { id name russian status kind airedOn { date } poster { mainUrl } } } } }"
         let body: [String: Any] = ["query": q, "variables": ["ids": ids.prefix(50).map(String.init).joined(separator: ",")]]
         return (try? JSONSerialization.data(withJSONObject: body)) ?? Data()
     }
@@ -97,6 +101,7 @@ public enum Airing {
             result[id] = AiringInfo(checkedAt: now, status: status, episodes: episodes, episodesAired: aired,
                                     nextEpisodeAt: (status == ongoing || status == anons) ? next : nil, sequel: sequel,
                                     franchise: (a["franchise"] as? String).map { $0.count > 200 ? "" : $0 } ?? "")
+            if let native = (a["japanese"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !native.isEmpty, native.count <= 200 { result[id]?.nativeTitle = native }
         }
         return result
     }
@@ -117,6 +122,9 @@ public enum Airing {
     /// Saves fresh data; empty release days are filled from the broadcast weekday.
     public static func apply(_ e: Entry, _ info: AiringInfo, calendar: Calendar = .current) -> Entry {
         var next = e; next.airing = info
+        // Shikimori does not know Bangumi and AniLibria data; the last known stays until they are checked again.
+        if info.bangumi == nil { next.airing?.bangumi = e.airing?.bangumi }
+        if info.libria == nil { next.airing?.libria = e.airing?.libria }
         if let key = info.franchise, !key.isEmpty { next.franchise = key }
         if (e.releaseDays ?? []).isEmpty, info.status == ongoing, let at = info.nextEpisodeAt {
             next.releaseDays = [ReleasePlanner.weekday(of: at, calendar: calendar)]

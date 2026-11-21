@@ -36,7 +36,7 @@ public enum Backlog {
     /// A larger gap usually means the source numbers seasons differently from the user.
     public static let plausibleGap = 99
     public static func latest(_ entry: Entry) -> Int? {
-        (entry.subscriptions ?? []).filter(\.enabled).compactMap(\.lastEpisode).max()
+        (entry.subscriptions ?? []).filter(\.enabled).compactMap(\.userEpisode).max()
     }
     /// Episodes available in connected sources beyond the user's own mark.
     public static func available(_ entry: Entry) -> Int? {

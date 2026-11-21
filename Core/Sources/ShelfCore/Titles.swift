@@ -68,7 +68,7 @@ public enum AnivibeCatalog {
     /// Only sitemap files of anivibe.pro itself are followed.
     public static func sitemapFiles(in xml: String) -> [URL] {
         Array(locations(in: xml).compactMap { loc -> URL? in
-            guard let url = URL(string: loc), url.scheme == "https", url.host == "anivibe.pro", url.path.hasSuffix(".xml") else { return nil }
+            guard let url = URL(string: loc), url.scheme == "https", AnivibeMirror.isKnown(url.host), url.path.hasSuffix(".xml") else { return nil }
             return url
         }.prefix(20))
     }
@@ -158,7 +158,7 @@ extension Entry {
         sources.append(ReleaseSubscription(pageURL: page.url, optionID: option.id, label: option.label, episode: option.episode, now: now))
         subscriptions = sources
         learnNames(page.names)
-        if watchURL.isEmpty { watchURL = page.watchURL(for: option, episode: option.episode) }
+        if watchURL.isEmpty, AnivibePageParser.canonicalURL(page.url) != nil { watchURL = page.watchURL(for: option, episode: option.episode) }
         if coverData == nil, coverURL.isEmpty, coverLookupDisabled != true, let cover = page.coverURL {
             coverURL = cover; coverLookupDisabled = false
         }

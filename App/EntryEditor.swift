@@ -63,7 +63,7 @@ struct EntryDetail: View {
                             WatchLinksSection(entry:e)
                             RelatedPartsSection(entry:e)
                             ForEach(e.subscriptions ?? []) { source in
-                                VStack(alignment:.leading,spacing:4) { Text(source.label).font(.subheadline.bold()); if let episode = source.lastEpisode { Text("В источнике доступна серия \(episode)").font(.subheadline).foregroundStyle(.secondary) }; if let error = source.error { Text(error).font(.caption).foregroundStyle(.orange) } }
+                                VStack(alignment:.leading,spacing:4) { Text(source.label).font(.subheadline.bold()); if let episode = source.userEpisode { Text("В источнике доступна серия \(episode)").font(.subheadline).foregroundStyle(.secondary) }; if let error = source.error { Text(error).font(.caption).foregroundStyle(.orange) } }
                             }
                             NavigationLink { TitleHistoryView(id:e.id) } label: { Label("История просмотра",systemImage:"clock.arrow.circlepath") }.font(.subheadline).accessibilityIdentifier("entry-history")
                         }

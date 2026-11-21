@@ -33,8 +33,10 @@ public struct Preferences: Codable, Equatable {
     public var airingReminders = false
     /// One card per franchise on the main screen (the season being watched stands for the others).
     public var groupFranchises = true
+    /// Mirror of AniVibe to request instead of anivibe.pro; nil uses the main address.
+    public var anivibeHost: String?
     public init() {}
-    private enum CodingKeys: String, CodingKey { case theme, layout, sort, showContinue, haptics, wifiOnly, automaticCovers, releaseNotifications, backgroundChecks, dailyDigest, digestMinutes, appLock, shelves, pureBlack, favoriteDubs, catalogUpdates, airingReminders, groupFranchises }
+    private enum CodingKeys: String, CodingKey { case theme, layout, sort, showContinue, haptics, wifiOnly, automaticCovers, releaseNotifications, backgroundChecks, dailyDigest, digestMinutes, appLock, shelves, pureBlack, favoriteDubs, catalogUpdates, airingReminders, groupFranchises, anivibeHost }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy:CodingKeys.self)
         theme = try c.decodeIfPresent(Theme.self,forKey:.theme) ?? .dark
@@ -55,6 +57,7 @@ public struct Preferences: Codable, Equatable {
         catalogUpdates = try c.decodeIfPresent(Bool.self,forKey:.catalogUpdates) ?? true
         airingReminders = try c.decodeIfPresent(Bool.self,forKey:.airingReminders) ?? false
         groupFranchises = try c.decodeIfPresent(Bool.self,forKey:.groupFranchises) ?? true
+        anivibeHost = (try c.decodeIfPresent(String.self,forKey:.anivibeHost)).flatMap(AnivibeMirror.normalizedHost).flatMap { $0 == AnivibeMirror.defaultHost ? nil : $0 }
     }
 }
 public struct Entry: Codable, Identifiable, Equatable {
@@ -142,11 +145,12 @@ public struct Snapshot: Codable, Equatable {
             guard Set((e.subscriptions ?? []).map(\.id)).count == (e.subscriptions?.count ?? 0),
                   Set((e.releaseNotices ?? []).map(\.id)).count == (e.releaseNotices?.count ?? 0) else { throw ShelfError.invalid("Повторяющиеся источники или уведомления.") }
             for source in e.subscriptions ?? [] {
-                guard AnivibePageParser.canonicalURL(source.pageURL) != nil, source.label.count <= 500,
+                guard ReleaseSources.isValidPage(source.pageURL), source.label.count <= 500, source.role == nil || SourceRole(rawValue: source.role!) != nil,
+                      source.offset == nil || (-100_000...100_000).contains(source.offset!),
                       source.optionID.count <= 150, source.lastEpisode == nil || (0...1_000_000).contains(source.lastEpisode!) else { throw ShelfError.invalid("Некорректные данные источника серий.") }
             }
             for notice in e.releaseNotices ?? [] {
-                guard AnivibePageParser.canonicalURL(notice.url) != nil, (1...1_000_000).contains(notice.episode),
+                guard ReleaseSources.isValidLink(notice.url), (1...1_000_000).contains(notice.episode),
                       (0..<notice.episode).contains(notice.previousEpisode), notice.title.count <= 500, notice.id.count <= 200 else { throw ShelfError.invalid("Некорректная ссылка новой серии.") }
             }
         }

@@ -1,0 +1,19 @@
+name: Проверка источников
+
+# Daily: do AniVibe, Shikimori, AniLibria, Bangumi and Telegram still answer in the format the app reads?
+# A failure e-mail from GitHub means a parser needs attention. Builds nothing.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/canary.py

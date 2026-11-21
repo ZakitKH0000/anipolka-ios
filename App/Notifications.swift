@@ -16,7 +16,7 @@ import UserNotifications
     func deliver(_ notice: ReleaseNotice,entryID: UUID) async {
         let content = UNMutableNotificationContent()
         content.title = "Новая серия · \(notice.title)"
-        content.body = "AniVibe · \(notice.sourceLabel ?? "Выбранная дорожка"): серия \(notice.episode). Нажмите, чтобы открыть просмотр."
+        content.body = "\(notice.sourceLabel ?? "Выбранная дорожка"): серия \(notice.episode). Нажмите, чтобы открыть просмотр."
         content.sound = .default; content.categoryIdentifier = Self.releaseCategory
         content.userInfo = ["watchURL":notice.url,"entryID":entryID.uuidString,"noticeID":notice.id]
         try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier:notice.id,content:content,trigger:nil))
@@ -101,7 +101,7 @@ import UserNotifications
             }
             return
         }
-        guard let address = info["watchURL"] as? String, AnivibePageParser.canonicalURL(address) != nil, let url = URL(string:address) else { return }
+        guard let address = info["watchURL"] as? String, ReleaseSources.isValidLink(address), let url = URL(string:AnivibeMirror.live(address)) else { return }
         await UIApplication.shared.open(url)
     }
 }

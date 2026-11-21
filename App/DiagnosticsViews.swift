@@ -19,6 +19,8 @@ import UserNotifications
         ("anilibria.top", "AniLibria", "Расписание озвучки AniLibria"),
         ("kitsu.io", "Kitsu", "Запасной поиск и обложки"),
         ("myanimelist.net", "MyAnimeList", "Импорт списка по нику"),
+        ("api.bgm.tv", "Bangumi", "Даты серий китайских и японских тайтлов"),
+        ("t.me", "Telegram", "Каналы студий озвучки (часто только через VPN)"),
     ]
     @Published private(set) var records: [String: Record] = [:]
     @Published private(set) var log: [String] = []

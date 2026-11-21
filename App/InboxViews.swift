@@ -188,7 +188,7 @@ struct GroupedNoticeRow: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(entry.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                         if let first, let last {
-                            Text(first.episode == last.episode ? "Серия \(last.episode)" : "Серии \(first.episode)–\(last.episode) · +\(notices.count)").font(.subheadline).lineLimit(1)
+                            Text(first.episode == last.episode ? "Серия \(last.episode)" : "Серии \(first.episode)–\(last.episode) · +\(Set(notices.map(\.episode)).count)").font(.subheadline).lineLimit(1)
                             Text([last.sourceLabel, agoText(last.foundAt)].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
@@ -204,7 +204,7 @@ struct GroupedNoticeRow: View {
     private func watch() {
         let next = max(entry.seasonEpisode + 1, notices.first?.episode ?? entry.seasonEpisode + 1)
         if inAppPlayer, WatchTarget.url(for: entry, episode: next) != nil { watching = next }
-        else if let notice = notices.first(where: { $0.episode >= next }) ?? notices.last, let url = validWebURL(notice.url) { openURL(url) }
+        else if let notice = notices.first(where: { $0.episode >= next }) ?? notices.last, let url = validWebURL(AnivibeMirror.live(notice.url)) { openURL(url) }
     }
 }
 
@@ -228,7 +228,7 @@ struct NoticeRow: View {
                     }
                 }
             }.accessibilityIdentifier("release-entry")
-            if let url = validWebURL(notice.url) {
+            if let url = validWebURL(AnivibeMirror.live(notice.url)) {
                 Button { markRead(); openURL(url) } label: { Image(systemName: "arrow.up.right.circle").font(.title2) }.buttonStyle(.borderless).accessibilityLabel("Открыть на сайте").accessibilityIdentifier("watch-notice")
             }
         }
@@ -272,6 +272,14 @@ struct AiringCard: View {
                         .font(.headline).foregroundStyle(at == nil ? Color.primary : Color.orange)
                     if let at { Text(Airing.moment(at, now: context.date).capitalizedFirst + " · " + Airing.progressText(info).lowercased()).font(.subheadline).foregroundStyle(.secondary) }
                     if let n = Airing.aired(entry) { Text("Уже вышло и не просмотрено: \(n) \(episodesWord(n))").font(.subheadline.bold()).foregroundStyle(.tint) }
+                    if let bangumi = info.bangumi, let line = Bangumi.line(bangumi) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar.badge.clock").foregroundStyle(.teal)
+                            Text(line).font(.subheadline)
+                            Spacer(minLength: 4)
+                            if let url = URL(string: bangumi.url) { Link("Открыть", destination: url).font(.subheadline.weight(.semibold)) }
+                        }
+                    }
                     if let libria = info.libria {
                         HStack(spacing: 6) {
                             Image(systemName: "waveform").foregroundStyle(.orange)

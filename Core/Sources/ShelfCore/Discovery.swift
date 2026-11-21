@@ -35,6 +35,10 @@ public struct ReleaseSubscription: Codable, Equatable, Identifiable {
     public var lastEpisode: Int?
     public var lastCheckedAt: Date?
     public var error: String?
+    /// «main» (default), «backup» or «silent»; see `SourceRole`.
+    public var role: String?
+    /// Source number minus the user's number: a source counting through all seasons gives a positive offset.
+    public var offset: Int?
     public init(pageURL: String, optionID: String, label: String, episode: Int, now: Date = Date()) {
         self.pageURL = pageURL; self.optionID = optionID; self.label = label; lastEpisode = episode; lastCheckedAt = now
     }
@@ -62,8 +66,10 @@ public struct SourceOption: Equatable, Identifiable {
     public var translationID: Int?
     public var translationKey: String?
     public var player: String
-    public init(id: String, label: String, episode: Int, translationID: Int? = nil, translationKey: String? = nil, player: String = "kodik") {
-        self.id = id; self.label = label; self.episode = episode; self.translationID = translationID; self.translationKey = translationKey; self.player = player
+    /// A ready link to the episode (a Telegram post).
+    public var link: String?
+    public init(id: String, label: String, episode: Int, translationID: Int? = nil, translationKey: String? = nil, player: String = "kodik", link: String? = nil) {
+        self.id = id; self.label = label; self.episode = episode; self.translationID = translationID; self.translationKey = translationKey; self.player = player; self.link = link
     }
 }
 public struct SourcePage: Equatable {
@@ -74,6 +80,8 @@ public struct SourcePage: Equatable {
     /// Every title the page gives for the work: Russian, English and alternative names.
     public var names: [String] = []
     public func watchURL(for option: SourceOption, episode: Int) -> String {
+        if let link = option.link { return link }
+        guard AnivibePageParser.canonicalURL(url) != nil else { return url }
         var components = URLComponents(string:url)!
         // Публичная страница поддерживает episode и translation. Видеопотоки не извлекаются.
         components.queryItems = [.init(name:"episode",value:String(episode))]
@@ -87,7 +95,7 @@ public struct SourcePage: Equatable {
 public enum AnivibePageParser {
     public static func canonicalURL(_ text: String) -> URL? {
         guard var parts = URLComponents(string:text.trimmingCharacters(in:.whitespacesAndNewlines)),
-              parts.scheme?.lowercased() == "https", ["anivibe.pro","www.anivibe.pro"].contains(parts.host?.lowercased() ?? ""),
+              parts.scheme?.lowercased() == "https", AnivibeMirror.isKnown(parts.host),
               parts.user == nil, parts.password == nil, parts.port == nil,
               parts.path.range(of:#"^/anime/[0-9]+(?:-[a-zA-Z0-9_-]+)?/?$"#,options:.regularExpression) != nil else { return nil }
         parts.host = "anivibe.pro"; parts.query = nil; parts.fragment = nil
@@ -175,9 +183,17 @@ public enum ReleaseTracker {
         subscriptions[i].lastCheckedAt = now; subscriptions[i].lastEpisode = option.episode; subscriptions[i].error = nil
         entry.subscriptions = subscriptions
         guard let previous = old.lastEpisode, option.episode > previous else { return nil }
-        let notice = ReleaseNotice(subscription:old,entryTitle:entry.title,episode:option.episode,url:page.watchURL(for:option,episode:option.episode),now:now)
+        let offset = old.offset ?? 0, number = option.episode - offset
+        guard number >= 1 else { return nil }
+        var notice = ReleaseNotice(subscription:old,entryTitle:entry.title,episode:number,url:page.watchURL(for:option,episode:option.episode),now:now)
+        notice.previousEpisode = min(max(previous - offset, 0), number - 1)
         var notices = entry.releaseNotices ?? []
         guard !notices.contains(where:{$0.id == notice.id}) else { return nil }
+        // One episode — one alert: a second dub of it, a quiet track or a backup the main dub already covers is filed as read.
+        let role = SourceRole(old.role)
+        let duplicate = notices.contains { $0.episode == number && $0.subscriptionID != old.id }
+        let mainHasIt = role == .backup && subscriptions.contains { $0.id != old.id && $0.enabled && SourceRole($0.role) == .main && ($0.userEpisode ?? 0) >= number }
+        if role == .silent || duplicate || mainHasIt || number <= entry.seasonEpisode { notice.read = true }
         notices.insert(notice,at:0); entry.releaseNotices = Array(notices.prefix(100)); return notice
     }
 }

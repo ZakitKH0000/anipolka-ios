@@ -116,14 +116,15 @@ import ImageIO
     }
     /// Public sitemap files of AniVibe; the site's search is closed to automated requests by robots.txt.
     func anivibeSitemap(_ url: URL) async throws -> String {
-        guard url.scheme == "https", url.host == "anivibe.pro", url.path.hasSuffix(".xml") else { throw URLError(.badURL) }
+        guard url.scheme == "https", AnivibeMirror.isKnown(url.host), url.path.hasSuffix(".xml") else { throw URLError(.badURL) }
+        let url = AnivibeMirror.live(url)
         let delay = max(0,nextSourceRequest.timeIntervalSinceNow)
         nextSourceRequest = Date().addingTimeInterval(delay + 1.2)
         if delay > 0 { try await Task.sleep(for:.seconds(delay)) }
         var request = URLRequest(url:url); request.timeoutInterval = 30
         request.setValue("AniPolka/1.2 (personal episode tracker)",forHTTPHeaderField:"User-Agent")
         let (data,response) = try await URLSession.shared.data(for:request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200, http.url?.host == "anivibe.pro", data.count <= 30_000_000,
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200, AnivibeMirror.isKnown(http.url?.host), data.count <= 30_000_000,
               let xml = String(data:data,encoding:.utf8) else { throw ShelfError.invalid("Список страниц AniVibe сейчас недоступен. Вставьте ссылку вручную.") }
         return xml
     }
@@ -136,7 +137,7 @@ import ImageIO
         let delay = max(0,nextSourceRequest.timeIntervalSinceNow)
         nextSourceRequest = Date().addingTimeInterval(delay + 1.2)
         if delay > 0 { try await Task.sleep(for:.seconds(delay)) }
-        var request = URLRequest(url:url); request.timeoutInterval = 20
+        var request = URLRequest(url:AnivibeMirror.live(url)); request.timeoutInterval = 20
         request.setValue("AniPolka/1.1 (personal episode tracker)",forHTTPHeaderField:"User-Agent")
         let (bytes,response) = try await URLSession.shared.bytes(for:request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200,
@@ -150,6 +151,39 @@ import ImageIO
     func aniList(_ ids: [Int]) async throws -> [Int: AniList.Next] {
         guard !ids.isEmpty else { return [:] }
         return try AniList.parse(await metadata(URL(string:"https://graphql.anilist.co")!,body:AniList.query(ids)))
+    }
+    /// Public preview of a Telegram channel; t.me is often reachable only through a VPN.
+    func telegramPage(_ url: URL) async throws -> String {
+        guard TelegramChannel.canonicalURL(url.absoluteString) != nil else { throw URLError(.badURL) }
+        var request = URLRequest(url: url); request.timeoutInterval = 10
+        request.setValue("AniPolka/1.4 (personal episode tracker)", forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html", forHTTPHeaderField: "Accept")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200, http.url?.host == "t.me", data.count <= 8_000_000,
+                  let html = String(data: data, encoding: .utf8), html.contains("tgme_widget_message") else {
+                throw ShelfError.invalid("Канал не открылся как публичный: проверьте название. Закрытые каналы не поддерживаются.")
+            }
+            SourceHealth.shared.record(host: "t.me", error: nil)
+            return html
+        } catch let error as URLError where ([.timedOut, .cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .secureConnectionFailed] as [URLError.Code]).contains(error.code) {
+            let friendly = ShelfError.invalid("Telegram недоступен из этой сети — включите VPN и проверьте снова.")
+            SourceHealth.shared.record(host: "t.me", error: friendly); throw friendly
+        } catch is CancellationError { throw CancellationError() }
+        catch { SourceHealth.shared.record(host: "t.me", error: error); throw error }
+    }
+    /// Bangumi subject whose name is exactly the native title.
+    func bangumiSubject(native: String) async throws -> Int? {
+        guard let url = Bangumi.searchURL(native) else { return nil }
+        do { return Bangumi.pickSubject(try await metadata(url), native: native) }
+        catch ShelfError.invalid(let text) where text.contains("ответил кодом 404") { return nil }
+    }
+    /// Episodes of a Bangumi subject: aired by today and the next one with its date.
+    func bangumiEpisodes(_ id: Int) async throws -> BangumiInfo {
+        var data = try await metadata(Bangumi.episodesURL(id))
+        if let total = Bangumi.total(data), total > 200 { data = try await metadata(Bangumi.episodesURL(id, offset: total - 150)) }
+        let parsed = try Bangumi.parseEpisodes(data, today: Bangumi.today())
+        return BangumiInfo(id: id, checkedAt: Date(), aired: parsed.aired, nextEpisode: parsed.next, nextDate: parsed.nextDate)
     }
     /// AniLibria's weekly dub schedule.
     func libriaSchedule() async throws -> [Int: LibriaInfo] { try AniLibria.parseSchedule(await metadata(AniLibria.scheduleURL)) }

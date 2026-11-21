@@ -6,10 +6,11 @@ struct WatchRequest: Identifiable { let entryID: UUID; let episode: Int; var id:
 /// Where to watch an episode inside the app: the found notice link, the connected AniVibe page or the user's own link.
 enum WatchTarget {
     static func url(for e: Entry, episode: Int) -> URL? {
-        if let notice = (e.releaseNotices ?? []).first(where: { $0.episode == episode }), let url = validWebURL(notice.url) { return url }
-        if let source = (e.subscriptions ?? []).first(where: \.enabled), AnivibePageParser.canonicalURL(source.pageURL) != nil,
-           var components = URLComponents(string: source.pageURL) {
-            var items = [URLQueryItem(name: "episode", value: String(episode))]
+        if let notice = (e.releaseNotices ?? []).first(where: { $0.episode == episode && AnivibePageParser.canonicalURL($0.url) != nil }), let url = validWebURL(AnivibeMirror.live(notice.url)) { return url }
+        let sources = (e.subscriptions ?? []).filter { $0.enabled && AnivibePageParser.canonicalURL($0.pageURL) != nil }
+        if let source = sources.first(where: { SourceRole($0.role) == .main }) ?? sources.first,
+           var components = URLComponents(string: AnivibeMirror.live(source.pageURL)) {
+            var items = [URLQueryItem(name: "episode", value: String(episode + (source.offset ?? 0)))]
             // Kodik tracks are chosen by the dub name, the first part of the source label.
             if source.optionID.hasPrefix("kodik"), let dub = source.label.components(separatedBy: " · ").first, !dub.isEmpty {
                 items.append(URLQueryItem(name: "translation", value: dub)); items.append(URLQueryItem(name: "player", value: "kodik"))

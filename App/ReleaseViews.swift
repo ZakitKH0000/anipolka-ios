@@ -13,6 +13,11 @@ struct EntrySourcesView: View {
     @State private var removing: UUID?
     @State private var suggestions: [AnivibeCatalog.Page]?
     @State private var searching = false
+    @State private var channel = ""
+    @State private var keyword = ""
+    @State private var telegramPage: SourcePage?
+    @State private var telegramLoading = false
+    @State private var telegramMessage: String?
     private var entry: Entry? { store.snapshot.entries.first(where:{$0.id == entryID}) }
     var body: some View {
         NavigationStack {
@@ -44,7 +49,7 @@ struct EntrySourcesView: View {
                             HStack {
                             favoriteButton(option.label)
                             Button {
-                                if assistant.connect(page:page,option:option,entryID:entryID) { self.page = nil; message = "Источник подключён. Сейчас доступна серия \(option.episode). Следующие выпуски появятся во вкладке «Серии». Для системных уведомлений включите их в Настройках АниПолки."; assistant.scheduleBackground(); assistant.queueCovers() }
+                                if assistant.connect(page:page,option:option,entryID:entryID) { self.page = nil; message = "Источник подключён. Сейчас доступна серия \(option.episode). Следующие выпуски появятся во вкладке «Выходы». Для системных уведомлений включите их в Настройках АниПолки."; assistant.scheduleBackground(); assistant.queueCovers() }
                             } label: {
                                 VStack(alignment:.leading,spacing:5) { Text(option.label).foregroundStyle(.primary); Text("Доступно серий: \(option.episode) · Подключить").font(.subheadline).foregroundStyle(.blue) }
                             }.disabled((entry?.subscriptions ?? []).contains(where:{$0.pageURL == page.url && $0.optionID == option.id})).accessibilityIdentifier("source-option-\(option.id)")
@@ -52,6 +57,20 @@ struct EntrySourcesView: View {
                         }
                     } header: { Text("Найдено на странице") }
                 }
+                Section {
+                    TextField("@канал или ссылка t.me/канал",text:$channel).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("telegram-channel")
+                    TextField("Название, как его пишет студия",text:$keyword,axis:.vertical).accessibilityIdentifier("telegram-keyword")
+                    Button { loadTelegram() } label: { HStack { Label("Проверить канал",systemImage:"paperplane"); if telegramLoading { Spacer(); ProgressView() } } }
+                        .disabled(telegramLoading || channel.isEmpty || keyword.trimmingCharacters(in:.whitespaces).count < 3).accessibilityIdentifier("inspect-telegram")
+                    if let telegramMessage { Text(telegramMessage).font(.footnote).foregroundStyle(.secondary) }
+                    if let telegramPage, let option = telegramPage.options.first {
+                        Button {
+                            if assistant.connect(page:telegramPage,option:option,entryID:entryID) { self.telegramPage = nil; telegramMessage = "Канал подключён: сейчас серия \(option.episode). Новые посты студии появятся во вкладке «Выходы»."; assistant.scheduleBackground() }
+                        } label: {
+                            VStack(alignment:.leading,spacing:4) { Text("\(telegramPage.title): найдена серия \(option.episode)").foregroundStyle(.primary); Text("Подключить как источник").font(.subheadline).foregroundStyle(.blue) }
+                        }.disabled((entry?.subscriptions ?? []).contains(where:{$0.pageURL == telegramPage.url && $0.optionID == option.id})).accessibilityIdentifier("connect-telegram")
+                    }
+                } header: { Text("Telegram-канал студии") } footer: { Text("Приложение читает последние ~20 публичных постов канала и ищет в первых строках поста это название с номером: «Серия: 10-16», «— 8 серия». Для другого сезона укажите название с номером сезона. Telegram из вашей сети обычно открывается только с VPN.") }
                 Section("Мои источники") {
                     ForEach(entry?.subscriptions ?? []) { source in
                         VStack(alignment:.leading,spacing:8) {
@@ -59,21 +78,37 @@ struct EntrySourcesView: View {
                                 favoriteButton(source.label)
                                 Toggle(source.label,isOn:Binding(get:{source.enabled},set:{ value in update(source.id) { $0.enabled = value }; assistant.scheduleBackground() }))
                             }
-                            if let episode = source.lastEpisode { Text("Последняя доступная: \(episode)").font(.subheadline) }
+                            if let episode = source.lastEpisode {
+                                Text((source.offset ?? 0) == 0 ? "Последняя доступная: \(episode)" : "Последняя доступная: \(source.userEpisode ?? episode) по-вашему (в источнике \(episode))").font(.subheadline)
+                            }
+                            Picker("Роль",selection:Binding(get:{SourceRole(source.role)},set:{ role in update(source.id) { $0.role = role == .main ? nil : role.rawValue } })) {
+                                ForEach(SourceRole.allCases) { Text($0.title).tag($0) }
+                            }.pickerStyle(.segmented).accessibilityIdentifier("source-role-\(source.id.uuidString)")
+                            Text(SourceRole(source.role).hint).font(.caption).foregroundStyle(.secondary)
+                            Stepper(value:Binding(get:{source.offset ?? 0},set:{ value in update(source.id) { $0.offset = value == 0 ? nil : value } }),in:-2000...2000) {
+                                VStack(alignment:.leading,spacing:2) {
+                                    Text("Сдвиг номера: \(source.offset ?? 0)").font(.subheadline)
+                                    if let episode = source.lastEpisode, (source.offset ?? 0) != 0 { Text("Серия \(episode) источника = ваша \(episode - (source.offset ?? 0))").font(.caption).foregroundStyle(.secondary) }
+                                }
+                            }
+                            if let episode = source.lastEpisode, let e = entry, episode - e.seasonEpisode > 50, (source.offset ?? 0) == 0 {
+                                Button("Источник считает сквозь сезоны? Сдвинуть на \(episode - e.seasonEpisode)") { update(source.id) { $0.offset = episode - e.seasonEpisode } }.font(.footnote)
+                            }
                             if let checked = source.lastCheckedAt { Text("Проверено: \(checked.formatted(date:.abbreviated,time:.shortened))").font(.caption).foregroundStyle(.secondary) }
                             if let error = source.error { Text(error).font(.caption).foregroundStyle(.orange) }
-                            if let url = validWebURL(source.pageURL) { Link("Открыть источник ↗",destination:url).font(.footnote) }
+                            if let url = validWebURL(AnivibeMirror.live(source.pageURL)) { Link("Открыть источник ↗",destination:url).font(.footnote) }
                             Button("Отключить источник",role:.destructive) { removing = source.id }.font(.footnote)
                         }.padding(.vertical,4)
                     }
                 }
                 Section {
-                    Text("VK: подключение требует регистрации приложения VK ID и разрешённого доступа к API публикаций/видео. В этой версии автоматическая проверка VK не подключена.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Основная озвучка уведомляет о каждой серии; запасная — только если в основной этой серии ещё нет; одна серия даёт одно уведомление. Сдвиг номера нужен, если источник считает серии сквозь все сезоны.").font(.footnote).foregroundStyle(.secondary)
                     Text("Проверяется наличие серий на выбранной публичной странице. Видео не скачиваются. Плеер открывается на самом сайте.").font(.footnote).foregroundStyle(.secondary)
                 }
             }.buttonStyle(.borderless).navigationTitle("Источники серий").navigationBarTitleDisplayMode(.inline)
                 .toolbar { Button("Готово") { dismiss() } }
                 .onAppear {
+                    if keyword.isEmpty, let title = entry?.title { keyword = title }
                     if address.isEmpty, let initialAddress { address = initialAddress }
                     if address.isEmpty {
                         if let value = entry?.watchURL, AnivibePageParser.canonicalURL(value) != nil { address = value }
@@ -101,8 +136,57 @@ struct EntrySourcesView: View {
         searching = true; suggestions = nil
         Task { defer { searching = false }; do { suggestions = try await assistant.anivibeCandidates(for:entry) } catch { message = error.localizedDescription } }
     }
+    private func loadTelegram() {
+        telegramLoading = true; telegramMessage = nil; telegramPage = nil
+        let name = TelegramChannel.channel(of:channel).map { "@" + $0 } ?? channel
+        Task { defer { telegramLoading = false }; do { telegramPage = try await assistant.readTelegram(channel,keyword:keyword,label:"\(name) · Telegram") } catch { telegramMessage = error.localizedDescription } }
+    }
     private func load() {
         loading = true; message = nil; page = nil
         Task { defer { loading = false }; do { page = try await assistant.readPage(address) } catch { message = error.localizedDescription } }
+    }
+}
+
+/// «Адрес AniVibe»: when the site moves to a mirror, every page is read there; saved links do not change.
+struct AnivibeMirrorSection: View {
+    @EnvironmentObject var store: ShelfStore
+    @EnvironmentObject var network: NetworkService
+    @State private var text = ""
+    @State private var checking = false
+    @State private var result: String?
+    var body: some View {
+        Section {
+            TextField(AnivibeMirror.defaultHost, text: $text).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("anivibe-host")
+            HStack {
+                Button("Сохранить") { save() }.disabled(AnivibeMirror.normalizedHost(text) == nil || AnivibeMirror.normalizedHost(text) == (store.snapshot.preferences.anivibeHost ?? AnivibeMirror.defaultHost))
+                Spacer()
+                if store.snapshot.preferences.anivibeHost != nil { Button("Вернуть anivibe.pro") { text = ""; result = nil; _ = store.change { $0.preferences.anivibeHost = nil } } }
+            }.buttonStyle(.borderless)
+            Button { Task { await check() } } label: { HStack { Label("Проверить адрес", systemImage: "network"); if checking { Spacer(); ProgressView() } } }.disabled(checking)
+            if let result { Text(result).font(.footnote).foregroundStyle(.secondary) }
+        } header: { Text("Адрес AniVibe") } footer: {
+            Text("Сейчас: \(store.snapshot.preferences.anivibeHost ?? AnivibeMirror.defaultHost). Если сайт переедет на зеркало, впишите новый адрес — все подключённые страницы будут читаться с него, а сохранённые ссылки останутся прежними.")
+        }
+        .onAppear { if text.isEmpty { text = store.snapshot.preferences.anivibeHost ?? "" } }
+    }
+    private func save() {
+        guard let host = AnivibeMirror.normalizedHost(text) else { return }
+        _ = store.change { $0.preferences.anivibeHost = host == AnivibeMirror.defaultHost ? nil : host }
+        text = host; result = "Сохранено. Нажмите «Проверить адрес»."
+    }
+    /// Reads one connected page (or the site map) through the address in use.
+    private func check() async {
+        checking = true; defer { checking = false }
+        let page = store.snapshot.entries.flatMap { $0.subscriptions ?? [] }.first { AnivibePageParser.canonicalURL($0.pageURL) != nil }
+        do {
+            if let page, let url = AnivibePageParser.canonicalURL(page.pageURL) {
+                let html = try await network.sourcePage(url)
+                let parsed = try AnivibePageParser.parse(html, url: url.absoluteString)
+                result = "Работает: \(AnivibeMirror.host) отдал страницу «\(parsed.title)» (\(parsed.options.count) озвучек)."
+            } else {
+                _ = try await network.anivibeSitemap(AnivibeCatalog.sitemapIndex)
+                result = "Работает: \(AnivibeMirror.host) отвечает."
+            }
+        } catch { result = "Не работает: \(error.localizedDescription)" }
     }
 }

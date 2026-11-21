@@ -79,6 +79,11 @@ import UserNotifications
         let html = try await network.sourcePage(url)
         return try AnivibePageParser.parse(html,url:url.absoluteString)
     }
+    /// A Telegram channel read for one title: the newest episode among the visible posts.
+    func readTelegram(_ address: String, keyword: String, label: String, known: Int? = nil) async throws -> SourcePage {
+        guard let url = TelegramChannel.canonicalURL(address) else { throw ShelfError.invalid("Укажите канал: @название или ссылку t.me/название.") }
+        return try TelegramChannel.page(try await network.telegramPage(url), url: url.absoluteString, keyword: keyword, label: label, known: known)
+    }
     func connect(page: SourcePage,option: SourceOption,entryID: UUID) -> Bool {
         store.change { state in
             guard let i = state.entries.firstIndex(where:{$0.id == entryID}) else { return }
@@ -89,15 +94,22 @@ import UserNotifications
         guard !checking, !store.demo, !background || store.snapshot.preferences.backgroundChecks else { return }
         checking = true; defer { checking = false; scheduleBackground() }
         if !background { message = nil }
-        let work = store.snapshot.entries.flatMap { e in (e.subscriptions ?? []).filter(\.enabled).map { (e.id,$0.id,$0.pageURL,$0.lastCheckedAt) } }
-            .sorted { ($0.3 ?? .distantPast) < ($1.3 ?? .distantPast) }
-        var pages: [String:SourcePage] = [:], newCount = 0, errors = 0
-        for (entryID,sourceID,url,lastChecked) in work.prefix(background ? 8 : 60) {
+        let work = store.snapshot.entries.flatMap { e in (e.subscriptions ?? []).filter(\.enabled).map { (e.id,$0) } }
+            .sorted { ($0.1.lastCheckedAt ?? .distantPast) < ($1.1.lastCheckedAt ?? .distantPast) }
+        var pages: [String:SourcePage] = [:], channels: [String:String] = [:], newCount = 0, errors = 0
+        for (entryID,source) in work.prefix(background ? 8 : 60) {
+            let sourceID = source.id, url = source.pageURL
             if Task.isCancelled { break }
-            if background, let lastChecked, lastChecked.timeIntervalSinceNow > -3600 { continue }
+            if background, let lastChecked = source.lastCheckedAt, lastChecked.timeIntervalSinceNow > -3600 { continue }
             do {
                 let page: SourcePage
-                if let cached = pages[url] { page = cached }
+                if let keyword = TelegramChannel.keyword(source.optionID) {
+                    let html: String
+                    if let cached = channels[url] { html = cached }
+                    else { guard let channelURL = TelegramChannel.canonicalURL(url) else { continue }; html = try await network.telegramPage(channelURL); channels[url] = html }
+                    page = try TelegramChannel.page(html, url: url, keyword: keyword, label: source.label, known: source.lastEpisode)
+                }
+                else if let cached = pages[url] { page = cached }
                 else { page = try await readPage(url); pages[url] = page }
                 try Task.checkCancellation()
                 var found: ReleaseNotice?
@@ -154,6 +166,24 @@ import UserNotifications
                 catch { report.append("AniList: ошибка — \(error.localizedDescription)") }
             }
             if report.isEmpty { report.append("AniList: время серий для \(next.count) из \(active.count)") }
+            var bangumi: [Int: BangumiInfo] = [:]
+            let candidates = store.snapshot.entries.filter { e in
+                guard e.status == .watching || e.status == .planned, let info = e.airing, info.status != Airing.released, let native = info.nativeTitle, !native.isEmpty else { return false }
+                guard let known = info.bangumi else { return true }
+                return Date().timeIntervalSince(known.checkedAt) > (known.id == 0 ? 7 * 86400 : 12 * 3600) || force
+            }
+            var bangumiErrors = 0
+            for e in candidates.prefix(12) {
+                guard let id = e.sourceID, let info = e.airing, let native = info.nativeTitle else { continue }
+                do {
+                    let subject: Int
+                    if let known = info.bangumi?.id, known > 0 { subject = known }
+                    else if let found = try await network.bangumiSubject(native: native) { subject = found }
+                    else { bangumi[id] = BangumiInfo(id: 0, checkedAt: Date()); continue }
+                    bangumi[id] = try await network.bangumiEpisodes(subject)
+                } catch { if Task.isCancelled { break }; bangumiErrors += 1 }
+            }
+            if !candidates.isEmpty { report.append("Bangumi: " + (bangumiErrors > 0 ? "ошибок \(bangumiErrors), " : "") + "найдено \(bangumi.values.filter { $0.id > 0 }.count) из \(min(candidates.count, 12))") }
             var libria: [Int: LibriaInfo] = [:]
             do { libria = try await network.libriaSchedule(); report.append("AniLibria: в расписании \(libria.count), из коллекции \(active.filter { libria[$0] != nil }.count)") }
             catch { report.append("AniLibria: ошибка — \(error.localizedDescription)") }
@@ -163,7 +193,7 @@ import UserNotifications
                 for i in state.entries.indices {
                     guard let id = state.entries[i].sourceID, let info = state.entries[i].airing else { continue }
                     let before = info.libria?.publishedEpisode
-                    state.entries[i].airing = Airing.merge(info, aniList: next[id], libria: libria[id] ?? (libria.isEmpty ? info.libria : nil))
+                    state.entries[i].airing = Bangumi.merge(Airing.merge(info, aniList: next[id], libria: libria[id] ?? (libria.isEmpty ? info.libria : nil)), bangumi[id] ?? info.bangumi)
                     if let now = state.entries[i].airing?.libria?.publishedEpisode, let before, now > before, now > state.entries[i].seasonEpisode { dubbed.append((state.entries[i], now)) }
                 }
             }

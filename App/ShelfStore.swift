@@ -99,6 +99,7 @@ import UIKit
     /// Widget data and the daily reminder follow every saved change, including ones made
     /// while the app runs in the background for a notification action or a shortcut.
     private func integrations() {
+        AnivibeMirror.host = snapshot.preferences.anivibeHost ?? AnivibeMirror.defaultHost
         guard !demo, loadFailure == nil else { return }
         WidgetBridge.shared.publish(snapshot)
         NotificationBridge.shared.scheduleDigest(snapshot)
