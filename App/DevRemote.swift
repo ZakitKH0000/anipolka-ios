@@ -155,9 +155,15 @@ import Network
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             return json(["ok": true])
         case ("POST", "/tab"):
-            guard let index = Int(r.query["index"] ?? ""), let tabs = Self.tabController(), tabs.viewControllers?.indices.contains(index) == true else { return json(["error": "Нужен index 0…4"], status: 400) }
+            guard let index = Int(r.query["index"] ?? ""), let tabs = Self.tabController() else { return json(["error": "Нет панели вкладок"], status: 400) }
             if let presented = tabs.presentedViewController { presented.dismiss(animated: false) }
-            tabs.selectedIndex = index
+            if #available(iOS 18, *), !tabs.tabs.isEmpty {
+                guard tabs.tabs.indices.contains(index) else { return json(["error": "Нужен index 0…\(tabs.tabs.count - 1)"], status: 400) }
+                tabs.selectedTab = tabs.tabs[index]
+            } else {
+                guard tabs.viewControllers?.indices.contains(index) == true else { return json(["error": "Нужен index 0…4"], status: 400) }
+                tabs.selectedIndex = index
+            }
             try? await Task.sleep(for: .milliseconds(400))
             return json(["ok": true, "tab": index])
         case ("POST", "/back"):

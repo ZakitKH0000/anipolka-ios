@@ -52,7 +52,7 @@ struct AnimeInfoSection: View {
     @State private var previewing: CatalogItem?
     @State private var fullScreenshot: String?
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 18) {
             if let d = details {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {

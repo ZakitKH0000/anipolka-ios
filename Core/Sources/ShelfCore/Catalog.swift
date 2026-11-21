@@ -85,7 +85,7 @@ public enum Catalog {
     static let fields = "id name russian kind episodes episodesAired status score airedOn { date } poster { mainUrl }"
 
     public enum Shelf: String, CaseIterable, Identifiable {
-        case donghua = "Дунхуа: выходят сейчас", ongoing = "Онгоинги сезона", anons = "Анонсы", top = "Лучшие за всё время"
+        case donghua = "Дунхуа и ONA: выходят сейчас", ongoing = "Онгоинги сезона", anons = "Анонсы", top = "Лучшие за всё время"
         public var id: String { rawValue }
         var filter: String {
             switch self {
