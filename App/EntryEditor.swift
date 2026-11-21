@@ -79,8 +79,8 @@ struct EntryDetail: View {
                     }.padding(20)
                 }.background(CoverAtmosphere(data:e.coverData)).tint(CoverPalette.accent(e.coverData) ?? .blue)
                     .overlay(alignment:.top) {
-                        LinearGradient(colors:[Color.black.opacity(0.55),Color.black.opacity(0.25),.clear],startPoint:.top,endPoint:.bottom)
-                            .frame(height:70).ignoresSafeArea(.container,edges:.top).allowsHitTesting(false)
+                        LinearGradient(colors:[Color.black.opacity(0.8),Color.black.opacity(0.45),.clear],startPoint:.top,endPoint:.bottom)
+                            .frame(height:110).ignoresSafeArea(.container,edges:.top).allowsHitTesting(false)
                     }
                     .confirmationDialog("Начать «\(e.title)» заново?",isPresented:$confirmRewatch,titleVisibility:.visible) {
                         Button("Начать пересмотр") { var copy = e; copy.startRewatch(); _ = store.save(copy) }

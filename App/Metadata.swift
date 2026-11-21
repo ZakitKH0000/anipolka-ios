@@ -40,12 +40,20 @@ import ImageIO
     }
     private func metadataRequest(_ url: URL, body: Data?) async throws -> Data {
         let host = url.host ?? ""
+        guard host == "graphql.anilist.co" else { return try await metadataCall(url, body: body, timeout: 20) }
+        do { return try await metadataCall(url, body: body, timeout: 8) }
+        catch let error as URLError where ([.timedOut, .cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .secureConnectionFailed] as [URLError.Code]).contains(error.code) {
+            throw ShelfError.invalid("AniList недоступен из этой сети (часто открывается только через VPN). Время серий берётся из Shikimori.")
+        }
+    }
+    private func metadataCall(_ url: URL, body: Data?, timeout: TimeInterval) async throws -> Data {
+        let host = url.host ?? ""
         guard Date() >= (cooldowns[host] ?? .distantPast) else { throw ShelfError.invalid("Каталог просит подождать. Повторите поиск через минуту.") }
         let wait = max(0, nextRequest.timeIntervalSinceNow)
         nextRequest = Date().addingTimeInterval(wait + 1.0)
         if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
         try Task.checkCancellation()
-        var request = URLRequest(url: url); request.timeoutInterval = 20
+        var request = URLRequest(url: url); request.timeoutInterval = timeout
         request.setValue("AniPolka/1.1 (personal iOS collection)", forHTTPHeaderField: "User-Agent")
         if let body { request.httpMethod = "POST"; request.httpBody = body; request.setValue("application/json",forHTTPHeaderField:"Content-Type") }
         request.setValue(url.host == "kitsu.io" ? "application/vnd.api+json" : "application/json", forHTTPHeaderField: "Accept")

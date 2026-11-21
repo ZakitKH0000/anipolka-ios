@@ -83,6 +83,20 @@ struct DiagnosticsView: View {
                 LabeledContent("Франшиз", value: "\(store.snapshot.franchises?.count ?? 0)")
                 LabeledContent("Непрочитанных выпусков", value: "\(NoticeInbox.unread(store.snapshot))")
                 if let error = store.loadFailure { Text(error).font(.caption).foregroundStyle(.red) }
+                let connected = store.snapshot.entries.filter { !($0.subscriptions ?? []).isEmpty }
+                if !connected.isEmpty {
+                    NavigationLink {
+                        List(connected) { entry in
+                            NavigationLink { EntryDetail(id: entry.id) } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(entry.title)
+                                    Text("Источников: \((entry.subscriptions ?? []).count)").font(.caption).foregroundStyle(.secondary)
+                                    ForEach((entry.subscriptions ?? []).compactMap(\.error), id: \.self) { Text($0).font(.caption).foregroundStyle(.orange) }
+                                }
+                            }
+                        }.navigationTitle("Подключённые истории")
+                    } label: { LabeledContent("Подключённые истории", value: "\(connected.count)") }
+                }
             }
             Section("Уведомления и копии") {
                 LabeledContent("Разрешение на уведомления", value: notifications)

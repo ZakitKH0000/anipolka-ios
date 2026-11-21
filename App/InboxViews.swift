@@ -138,20 +138,6 @@ struct ReleasesView: View {
                 } header: { Text("Просмотренные") } footer: { Text("Просмотренные уведомления удаляются сами через \(NoticeInbox.keepReadDays) дней.") }
             }
 
-            let connected = s.entries.filter { !($0.subscriptions ?? []).isEmpty }
-            if !connected.isEmpty {
-                Section("Подключённые истории") {
-                    ForEach(connected) { entry in
-                        NavigationLink { EntryDetail(id: entry.id) } label: {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(entry.title)
-                                Text("Источников: \((entry.subscriptions ?? []).count)").font(.caption).foregroundStyle(.secondary)
-                                if (entry.subscriptions ?? []).contains(where: { $0.error != nil }) { Label("Есть недоступный источник", systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange) }
-                            }
-                        }
-                    }
-                }
-            }
         }
         .navigationTitle("Выходы").feedbackScreen("Выходы")
         .refreshable { await assistant.checkReleases(); await assistant.refreshAiring(force: true) }
@@ -202,22 +188,17 @@ struct GroupedNoticeRow: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(entry.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                         if let first, let last {
-                            Text(first.episode == last.episode ? "Серия \(last.episode)" : "Серии \(first.episode)–\(last.episode) · \(notices.count) \(newWord(notices.count))").font(.subheadline)
+                            Text(first.episode == last.episode ? "Серия \(last.episode)" : "Серии \(first.episode)–\(last.episode) · +\(notices.count)").font(.subheadline).lineLimit(1)
                             Text([last.sourceLabel, agoText(last.foundAt)].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
                 }
             }.accessibilityIdentifier("release-entry")
-            Button("Смотреть") { watch() }.buttonStyle(.bordered).controlSize(.small).accessibilityIdentifier("watch-notice")
+            Button { watch() } label: { Image(systemName: "play.circle.fill").font(.title) }.buttonStyle(.borderless).accessibilityLabel("Смотреть").accessibilityIdentifier("watch-notice")
         }
         .fullScreenCover(item: Binding(get: { watching.map { WatchEpisode(number: $0) } }, set: { watching = $0?.number })) { item in
             WatchView(entryID: entry.id, episode: item.number).environmentObject(store)
         }
-    }
-    private func newWord(_ n: Int) -> String {
-        let tens = n % 100, ones = n % 10
-        if (11...14).contains(tens) { return "новых" }
-        return ones == 1 ? "новая" : "новых"
     }
     /// Starts from the first episode not yet watched; the site opens outside when built-in viewing is off.
     private func watch() {
@@ -248,7 +229,7 @@ struct NoticeRow: View {
                 }
             }.accessibilityIdentifier("release-entry")
             if let url = validWebURL(notice.url) {
-                Button("Смотреть") { markRead(); openURL(url) }.buttonStyle(.bordered).controlSize(.small).accessibilityIdentifier("watch-notice")
+                Button { markRead(); openURL(url) } label: { Image(systemName: "arrow.up.right.circle").font(.title2) }.buttonStyle(.borderless).accessibilityLabel("Открыть на сайте").accessibilityIdentifier("watch-notice")
             }
         }
     }
