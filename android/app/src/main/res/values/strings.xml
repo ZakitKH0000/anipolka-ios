@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">АниПолка</string>
+    <string name="widget_description">Следующие серии и истории, которые выходят сегодня</string>
+    <string name="shortcut_mark">+1 серия</string>
+    <string name="shortcut_mark_long">+1 серия в последней истории</string>
+    <string name="shortcut_add">Добавить историю</string>
+    <string name="tile_label">+1 серия</string>
+</resources>
